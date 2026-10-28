@@ -8,7 +8,9 @@ Google TV's home screen opens on a full-width ad (the "hero") with a row of spon
 |---|---|
 | ![Google TV home with a full-screen promo and sponsored rows](docs/google-tv-before.jpg) | ![Inicio home: misty Estonian bog, clock, weather and an app dock](docs/inicio-home.jpg) |
 
-![The Paisajes screensaver: a lake in Friesland with the clock in the corner](docs/screensaver.jpg)
+| Screensaver, with what's playing | The dock's HDMI tiles |
+|---|---|
+| ![The Paisajes screensaver on an Andaman beach, showing the Spotify song above the clock](docs/screensaver-now-playing.jpg) | ![The end of the dock: Spotify, SmartTube, All apps and three HDMI tiles](docs/dock-hdmi.jpg) |
 
 *The UI is in Spanish because the TV is in a Mexican household. Photos come from Wikimedia Commons; each one carries its author and license on screen.*
 
@@ -64,13 +66,22 @@ File and script names are in Spanish; the table above is the translation.
 
 **Editing the dock with the remote.** Hold OK on a dock app for *Move* or *Remove*. In move mode the tile jiggles like an iOS icon: ← and → move it, and OK or Back drops it. In *All apps*, hold OK on any app to add it to the dock or remove it. The order is saved on the TV.
 
-**Your photos.** Press ↑ from the dock to reach three buttons in the top-right corner. *Guardar foto* keeps the photo: a saved photo is never deleted to make room and shows up twice as often. *Otra foto* skips to the next one. *No mostrar* deletes the photo and makes sure it's never downloaded again.
+**Your photos.** Press ↑ from the dock to reach the **•••** button in the top-right corner. Its menu, titled with the photo's location, has three options. *Guardar esta foto* keeps the photo: a saved photo is never deleted to make room and shows up twice as often. *Otra foto* skips to the next one. *No volver a mostrar* deletes the photo and makes sure it's never downloaded again.
 
 **Focus, Apple TV style.** The focused tile lifts with a small spring, casts a shadow and gets a diagonal glint across it. Push against an edge and the tile tilts toward it, then settles back. Pressing OK sinks it slightly before launching. *All apps* sizes its five columns from the real screen width over the same dimmed landscape.
 
 **Picture-frame mode.** After 45 s without a key press the dock slides away and only the photograph is left. The next key press brings the dock back without launching anything.
 
 Why not use Unsplash? It would work, but it needs a developer account and an API key, and Commons covers this use without either. Why not use [Projectivy](https://play.google.com/store/apps/details?id=com.spocky.projengmenu)? It's a great launcher, and the sister repo uses it. Here the point was a screen that looks exactly the way we want.
+
+**Memory.** Measured on this TV with the same method for both: reboot, wait until things settle, then five `dumpsys meminfo` samples 30 s apart. The Google TV numbers were taken with the debloat already in place.
+
+| Home screen | Average PSS |
+|---|---|
+| Google TV (`launcherx` + `launcherx:coreservices`) | **126 MB** (94.6 + 31.8) |
+| Inicio | **43 MB** |
+
+That's about two thirds less, on a TV with 1.8 GB of RAM.
 
 ## Caring for the panel
 

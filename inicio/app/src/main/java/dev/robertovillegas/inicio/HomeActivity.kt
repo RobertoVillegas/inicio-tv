@@ -23,8 +23,8 @@ class HomeActivity : Activity() {
     private lateinit var escena: Escena
     private lateinit var dock: HorizontalScrollView
     private lateinit var fila: LinearLayout
-    private lateinit var controlesFoto: LinearLayout
-    private lateinit var botonFavorita: TextView
+    private lateinit var menuFoto: TextView
+    private var favoritaActual = false
     private lateinit var sonando: Sonando
     private val principal = Handler(Looper.getMainLooper())
     private val trabajo = Executors.newSingleThreadExecutor()
@@ -33,6 +33,9 @@ class HomeActivity : Activity() {
 
     // Mientras se mueve una app dentro del dock: cuál es y en qué posición va.
     private var moviendo: Tarjeta? = null
+
+    // La tecla que termina de mover se suelta después; ese "soltar" no debe abrir la app.
+    private var tragarSoltar = false
 
     // Sin tocar el control, el dock se esconde y queda solo el paisaje.
     private val ocultarDock = Runnable { entrarModoCuadro() }
@@ -80,18 +83,12 @@ class HomeActivity : Activity() {
         }
         raiz.addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
 
-        // Arriba a la derecha: guardar, cambiar u ocultar la foto. Se llega con ↑ desde el dock.
-        botonFavorita = chip("♡  Guardar foto") { alternarFavorita() }
-        controlesFoto = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(botonFavorita)
-            addView(chip("↻  Otra foto") { escena.otra() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = escena.dp(10) })
-            addView(chip("✕  No mostrar") { ocultarFoto() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = escena.dp(10) })
-        }
-        raiz.addView(controlesFoto, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+        // Arriba a la derecha, un botón ⋯ con las opciones de la foto. Se llega con ↑ desde el dock.
+        menuFoto = boton("•••") { opcionesFoto() }
+        raiz.addView(menuFoto, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
             setMargins(0, escena.dp(32), escena.dp(48), 0)
         })
-        escena.alCambiarFoto = { foto -> botonFavorita.text = if (foto.favorita) "♥  Guardada" else "♡  Guardar foto" }
+        escena.alCambiarFoto = { foto -> favoritaActual = foto.favorita }
 
         raiz.clipChildren = false
         setContentView(raiz)
@@ -100,12 +97,13 @@ class HomeActivity : Activity() {
         principal.post(refrescarFondos)
     }
 
-    private fun chip(texto: String, accion: () -> Unit) = TextView(this).apply {
+    private fun boton(texto: String, accion: () -> Unit) = TextView(this).apply {
         text = texto
         isFocusable = true
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        setPadding(escena.dp(14), escena.dp(7), escena.dp(14), escena.dp(7))
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        letterSpacing = 0.1f
+        setPadding(escena.dp(14), escena.dp(6), escena.dp(14), escena.dp(6))
         val normal = GradientDrawable().apply { cornerRadius = escena.dp(20).toFloat(); setColor(0x40000000) }
         val enfocado = GradientDrawable().apply { cornerRadius = escena.dp(20).toFloat(); setColor(Color.WHITE) }
         background = normal
@@ -120,15 +118,32 @@ class HomeActivity : Activity() {
         setOnClickListener { accion() }
     }
 
-    private fun alternarFavorita() {
+    private fun opcionesFoto() {
         val foto = escena.actual ?: return
-        val nueva = !foto.favorita
+        val opciones = arrayOf(
+            if (favoritaActual) "♥  Quitar de guardadas" else "♡  Guardar esta foto",
+            "↻  Otra foto",
+            "✕  No volver a mostrar",
+            "Cancelar",
+        )
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(foto.lugar.ifEmpty { "Esta foto" })
+            .setItems(opciones) { _, i ->
+                when (i) {
+                    0 -> alternarFavorita(foto)
+                    1 -> escena.otra()
+                    2 -> ocultarFoto()
+                }
+            }
+            .show()
+    }
+
+    private fun alternarFavorita(foto: Foto) {
+        val nueva = !favoritaActual
+        favoritaActual = nueva
         trabajo.execute {
             Fondos.marcarFavorita(this, foto, nueva)
-            principal.post {
-                botonFavorita.text = if (nueva) "♥  Guardada" else "♡  Guardar foto"
-                escena.recargar(saltar = false)
-            }
+            principal.post { escena.recargar(saltar = false) }
         }
     }
 
@@ -255,11 +270,18 @@ class HomeActivity : Activity() {
             if (event.action == KeyEvent.ACTION_UP) salirModoCuadro()
             return true
         }
+        if (tragarSoltar && event.action == KeyEvent.ACTION_UP) {
+            tragarSoltar = false
+            return true
+        }
         if (moviendo != null) {
             if (event.action == KeyEvent.ACTION_DOWN) when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> moverA(-1)
                 KeyEvent.KEYCODE_DPAD_RIGHT -> moverA(1)
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BACK -> terminarDeMover()
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BACK -> {
+                    terminarDeMover()
+                    tragarSoltar = true
+                }
             }
             return true
         }
@@ -285,14 +307,14 @@ class HomeActivity : Activity() {
         if (moviendo != null) return
         modoCuadro = true
         dock.animate().alpha(0f).translationY(escena.dp(40).toFloat()).setDuration(600).start()
-        controlesFoto.animate().alpha(0f).setDuration(600).start()
+        menuFoto.animate().alpha(0f).setDuration(600).start()
         acomodar()
     }
 
     private fun salirModoCuadro() {
         modoCuadro = false
         dock.animate().alpha(1f).translationY(0f).setDuration(250).start()
-        controlesFoto.animate().alpha(1f).setDuration(250).start()
+        menuFoto.animate().alpha(1f).setDuration(250).start()
         acomodar()
         principal.removeCallbacks(ocultarDock)
         principal.postDelayed(ocultarDock, 45_000L)

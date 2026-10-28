@@ -40,6 +40,7 @@ object Fondos {
         "train", "railway", "station", "emu", "locomotive", "car ", "bus ", "airport",
         "church", "chapel", "cathedral", "castle", "temple", "monument", "museum",
         "village", "town", "city", "street", "building", "house", "bridge", "harbour", "port of",
+        "neighbourhood", "neighborhood", "commune", "district", "skyline", "wind farm", "windmill",
         "monumento", "iglesia", "castillo", "pueblo", "ciudad",
     )
 
