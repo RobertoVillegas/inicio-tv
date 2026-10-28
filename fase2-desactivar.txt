@@ -1,0 +1,3 @@
+# Solo despues de que Projectivy funcione como inicio
+com.google.android.apps.tv.launcherx
+com.google.android.videos

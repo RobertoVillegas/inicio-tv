@@ -1,0 +1,13 @@
+com.app.future
+com.apple.atve.androidtv.appletv
+com.cbs.ca
+com.crunchyroll.crunchyroid
+com.disney.disneyplus
+com.esaba.downloader
+com.flix.tv
+com.plexapp.android
+com.spotify.tv.android
+com.tubitv
+com.univision.prendetv
+com.wbd.stream
+tv.twitch.android.app

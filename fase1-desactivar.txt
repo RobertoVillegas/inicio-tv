@@ -1,0 +1,25 @@
+# Apps instaladas que no usas
+com.cbs.ca
+com.disney.disneyplus
+com.esaba.downloader
+com.flix.tv
+com.tubitv
+com.univision.prendetv
+com.wbd.stream
+tv.twitch.android.app
+# Google: voz/Assistant, YouTube Music, juegos, feedback, protector de pantalla con contenido
+com.google.android.katniss
+com.google.android.youtube.tvmusic
+com.google.android.play.games
+com.google.android.feedback
+com.google.android.apps.tv.dreamx
+# TCL: canales FAST con anuncios, modo tienda, Alexa, mensajes/promos, manuales, feed de contenido
+com.tcl.channelplus
+com.tcl.esticker
+com.tcl.exhibit
+com.tcl.smartalexa
+com.tcl.magiconnectfree
+com.tcl.messagebox
+com.tcl.ocean.instructions
+com.tcl.repairguide
+com.tcl.waterfall.overseas
