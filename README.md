@@ -21,7 +21,7 @@ Everything here was done over ADB from a Mac, with no root, and it's all reversi
 ```
 inicio/                  Android app: home screen + screensaver (Kotlin, no dependencies, ~70 KB)
 fase1-desactivar.txt     The 22 packages disabled in the debloat
-fase2-desactivar.txt     Google TV's launcher, disabled only once Inicio is the home screen
+fase2-desactivar.txt     Google TV's launcher and setup app, disabled once Inicio is the home screen
 aplicar.sh               Disable every package in a list
 instalar-inicio.sh       Build + install Inicio, make it the screensaver, set sleep timers
 poner-inicio.sh          Make Inicio the home screen and disable Google TV's launcher
@@ -59,6 +59,8 @@ File and script names are in Spanish; the table above is the translation.
 **Weather.** It comes from [Open-Meteo](https://open-meteo.com/), which needs no key. The TV's location comes from its public IP via [ipapi.co](https://ipapi.co/) and is cached for a day.
 
 **Apps.** The dock shows a fixed list (`FAVORITAS` in [`Apps.kt`](inicio/app/src/main/java/dev/robertovillegas/inicio/Apps.kt)), then *All apps*, *Inputs* (HDMI, through TCL's own TV app) and *Settings*. Apps that aren't installed are skipped.
+
+**Focus, Apple TV style.** The focused tile lifts with a small spring, casts a shadow and gets a diagonal glint across it. Push against an edge and the tile tilts toward it, then settles back. Pressing OK sinks it slightly before launching. *All apps* sizes its five columns from the real screen width over the same dimmed landscape.
 
 **Picture-frame mode.** After 45 s without a key press the dock slides away and only the photograph is left. The next key press brings the dock back without launching anything.
 
@@ -112,6 +114,8 @@ Then:
 ./poner-inicio.sh                   # make Inicio the home screen
 ```
 
+**Going back to Google TV.** Its launcher is disabled, so it can't be opened from Inicio. Run `./rescate-launcher.sh` from a computer: it re-enables the launcher and the setup app, hands the Home button back, and reboots.
+
 To undo:
 
 ```bash
@@ -131,6 +135,7 @@ The release build is signed with the local debug key. It's meant to be sideloade
 
 ## Gotchas
 
+- **Google's setup app hijacks the Home button.** With Google TV's launcher disabled, `com.google.android.tungsten.setupwraith/.RecoveryActivity` outranks any custom home screen, even when Inicio holds the `HOME` role. Shell can't disable a system app's single component, so `poner-inicio.sh` disables the whole setup app (setup is long done), and the rescue script turns it back on.
 - **TCL blocks third-party services from starting on their own.** The log reads `TclAppBoot: callee_does't_have_OP_AUTO_START_permission`, and a custom screensaver closes the instant it opens. The fix is `cmd appops set <package> APP_AUTO_START allow`; `instalar-inicio.sh` runs it.
 - **Wait about 15 s after enabling or disabling packages before you reboot.** If you reboot sooner, PackageManager may not have saved the change, and it gets reverted.
 - **If you see `unauthorized` in `adb devices`,** accept the prompt on the TV and tick *Always allow from this computer*.

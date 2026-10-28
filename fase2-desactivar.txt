@@ -1,3 +1,5 @@
-# Solo despues de que Projectivy funcione como inicio
+# Solo despues de que Inicio funcione como pantalla de inicio (poner-inicio.sh)
 com.google.android.apps.tv.launcherx
 com.google.android.videos
+# Su RecoveryActivity tiene mas prioridad que cualquier launcher propio y se queda con el boton Home
+com.google.android.tungsten.setupwraith

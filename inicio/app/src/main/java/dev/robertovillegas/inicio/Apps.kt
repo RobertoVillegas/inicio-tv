@@ -9,10 +9,14 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.provider.Settings
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewOutlineProvider
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -83,18 +87,31 @@ object Apps {
     }
 }
 
-/** Una tarjeta de app que crece y se marca con borde blanco al recibir el foco del control. */
+/**
+ * Una tarjeta de app al estilo Apple TV: al recibir el foco se eleva con un pequeño rebote,
+ * proyecta sombra y un brillo cruza la superficie. Si el control empuja contra una orilla,
+ * la tarjeta se inclina un poco hacia ese lado y regresa.
+ */
 class Tarjeta(ctx: Context, app: App, ancho: Int, alto: Int) : FrameLayout(ctx) {
+    private val marco = FrameLayout(ctx)
+    private val brillo = View(ctx)
+    private val reflejo = View(ctx)
     private val nombre = TextView(ctx)
+    private val anchoPx = dp(ancho).toFloat()
 
     init {
         isFocusable = true
         clipChildren = false
-        val radio = dp(10).toFloat()
-        val marco = FrameLayout(ctx).apply {
+        clipToPadding = false
+        val radio = dp(12).toFloat()
+
+        marco.apply {
             background = GradientDrawable().apply { cornerRadius = radio; setColor(0x33FFFFFF) }
             clipToOutline = true
-            outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+            outlineProvider = ViewOutlineProvider.BACKGROUND
+            outlineSpotShadowColor = Color.BLACK
+            outlineAmbientShadowColor = Color.BLACK
+            cameraDistance = 8000 * resources.displayMetrics.density
         }
         val img = ImageView(ctx).apply {
             setImageDrawable(app.imagen)
@@ -103,14 +120,23 @@ class Tarjeta(ctx: Context, app: App, ancho: Int, alto: Int) : FrameLayout(ctx) 
             if (scaleType == ImageView.ScaleType.FIT_CENTER) setPadding(dp(18), dp(18), dp(18), dp(18))
         }
         marco.addView(img, LayoutParams(-1, -1))
-        val borde = View(ctx).apply {
-            background = GradientDrawable().apply {
-                cornerRadius = radio
-                setStroke(dp(3), Color.WHITE)
-            }
-            visibility = INVISIBLE
-        }
-        marco.addView(borde, LayoutParams(-1, -1))
+
+        // Luz suave desde arriba mientras la tarjeta tiene el foco.
+        reflejo.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0x30FFFFFF, 0x00FFFFFF, 0x00FFFFFF),
+        )
+        reflejo.alpha = 0f
+        marco.addView(reflejo, LayoutParams(-1, -1))
+
+        // Franja diagonal que cruza la tarjeta una vez al enfocarla.
+        brillo.background = GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(0x00FFFFFF, 0x50FFFFFF, 0x00FFFFFF),
+        )
+        brillo.rotation = 18f
+        brillo.alpha = 0f
+        marco.addView(brillo, LayoutParams(dp(ancho / 3), dp(alto * 2), Gravity.CENTER_VERTICAL))
         addView(marco, LayoutParams(dp(ancho), dp(alto)))
 
         nombre.text = app.nombre
@@ -120,21 +146,74 @@ class Tarjeta(ctx: Context, app: App, ancho: Int, alto: Int) : FrameLayout(ctx) 
         nombre.setShadowLayer(dp(4).toFloat(), 0f, 0f, 0xCC000000.toInt())
         nombre.gravity = Gravity.CENTER
         nombre.maxLines = 1
+        nombre.ellipsize = TextUtils.TruncateAt.END
         nombre.alpha = 0f
-        addView(nombre, LayoutParams(dp(ancho), -2, Gravity.TOP).apply { topMargin = dp(alto + 10) })
+        addView(nombre, LayoutParams(dp(ancho), -2, Gravity.TOP).apply { topMargin = dp(alto + 14) })
 
-        setOnFocusChangeListener { _, foco ->
-            val escala = if (foco) 1.1f else 1f
-            animate().scaleX(escala).scaleY(escala).setDuration(150).start()
-            nombre.animate().alpha(if (foco) 1f else 0f).setDuration(150).start()
-            borde.visibility = if (foco) VISIBLE else INVISIBLE
-            elevation = if (foco) dp(8).toFloat() else 0f
-        }
+        setOnFocusChangeListener { _, foco -> if (foco) enfocar() else desenfocar() }
         setOnClickListener { Apps.lanzar(ctx, app.abrir) }
-        setOnKeyListener { _, code, ev ->
-            if (ev.action == KeyEvent.ACTION_UP &&
-                (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER)
-            ) { performClick(); true } else false
+        setOnKeyListener { _, code, ev -> tecla(code, ev) }
+    }
+
+    private fun enfocar() {
+        marco.animate().scaleX(1.12f).scaleY(1.12f).translationZ(dp(18).toFloat())
+            .rotationX(0f).rotationY(0f)
+            .setInterpolator(OvershootInterpolator(1.6f)).setDuration(320).start()
+        reflejo.animate().alpha(1f).setDuration(200).start()
+        nombre.translationY = dp(-6).toFloat()
+        nombre.animate().alpha(1f).translationY(0f).setDuration(220).start()
+        brillo.translationX = -anchoPx / 2
+        brillo.alpha = 1f
+        brillo.animate().translationX(anchoPx * 1.2f).setInterpolator(DecelerateInterpolator())
+            .setDuration(650).withEndAction { brillo.alpha = 0f }.start()
+    }
+
+    private fun desenfocar() {
+        marco.animate().scaleX(1f).scaleY(1f).translationZ(0f).rotationX(0f).rotationY(0f)
+            .setInterpolator(DecelerateInterpolator()).setDuration(200).start()
+        reflejo.animate().alpha(0f).setDuration(150).start()
+        nombre.animate().alpha(0f).setDuration(120).start()
+        brillo.animate().cancel()
+        brillo.alpha = 0f
+    }
+
+    private fun tecla(code: Int, ev: KeyEvent): Boolean {
+        val centro = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
+        if (centro && ev.action == KeyEvent.ACTION_DOWN && ev.repeatCount == 0) {
+            marco.animate().scaleX(1.05f).scaleY(1.05f).setInterpolator(DecelerateInterpolator())
+                .setDuration(90).start()
+            return true
         }
+        if (centro && ev.action == KeyEvent.ACTION_UP) {
+            marco.animate().scaleX(1.12f).scaleY(1.12f).setInterpolator(OvershootInterpolator(2f))
+                .setDuration(220).start()
+            performClick()
+            return true
+        }
+        if (ev.action == KeyEvent.ACTION_DOWN) {
+            val direccion = when (code) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> FOCUS_LEFT
+                KeyEvent.KEYCODE_DPAD_RIGHT -> FOCUS_RIGHT
+                KeyEvent.KEYCODE_DPAD_UP -> FOCUS_UP
+                KeyEvent.KEYCODE_DPAD_DOWN -> FOCUS_DOWN
+                else -> return false
+            }
+            if (focusSearch(direccion) == null) inclinar(direccion)
+        }
+        return false
+    }
+
+    private fun inclinar(direccion: Int) {
+        val (rx, ry) = when (direccion) {
+            FOCUS_LEFT -> 0f to -10f
+            FOCUS_RIGHT -> 0f to 10f
+            FOCUS_UP -> 10f to 0f
+            else -> -10f to 0f
+        }
+        marco.animate().rotationX(rx).rotationY(ry).setInterpolator(DecelerateInterpolator())
+            .setDuration(110).withEndAction {
+                marco.animate().rotationX(0f).rotationY(0f).setInterpolator(OvershootInterpolator(2.5f))
+                    .setDuration(380).start()
+            }.start()
     }
 }
