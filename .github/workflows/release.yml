@@ -42,6 +42,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp inicio/app/build/outputs/apk/release/app-release.apk "inicio-${GITHUB_REF_NAME}.apk"
-          gh release create "$GITHUB_REF_NAME" "inicio-${GITHUB_REF_NAME}.apk" \
-            --title "Inicio ${GITHUB_REF_NAME}" --generate-notes
+          apk="inicio-${GITHUB_REF_NAME}.apk"
+          cp inicio/app/build/outputs/apk/release/app-release.apk "$apk"
+          # Re-pushing a tag (for example to sign it) replaces the APK instead of failing.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$apk" --title "Inicio ${GITHUB_REF_NAME}" --generate-notes
+          fi
