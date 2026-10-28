@@ -16,6 +16,7 @@ data class Foto(
     val descripcion: String,
     val autor: String,
     val licencia: String,
+    val favorita: Boolean,
 )
 
 /**
@@ -51,6 +52,7 @@ object Fondos {
     private fun dir(ctx: Context) = File(ctx.filesDir, "fondos").apply { mkdirs() }
     private fun indice(ctx: Context) = File(dir(ctx), "indice.json")
     private fun titulos(ctx: Context) = File(dir(ctx), "titulos.json")
+    private fun vetadas(ctx: Context) = File(dir(ctx), "vetadas.json")
 
     @Synchronized
     fun listar(ctx: Context): List<Foto> {
@@ -65,6 +67,7 @@ object Fondos {
                 o.optString("descripcion"),
                 o.optString("autor"),
                 o.optString("licencia"),
+                o.optBoolean("favorita"),
             )
         }
     }
@@ -76,7 +79,7 @@ object Fondos {
 
     /** Baja algunas fotos nuevas y descarta las más viejas. Bloquea: llamar fuera del hilo principal. */
     fun refrescar(ctx: Context) {
-        val conocidas = listar(ctx).map { it.archivo.name }.toSet()
+        val conocidas = listar(ctx).map { it.archivo.name }.toSet() + leerVetadas(ctx)
         val candidatos = titulosDisponibles(ctx).shuffled()
         var nuevas = 0
         for (titulo in candidatos) {
@@ -89,6 +92,36 @@ object Fondos {
             }
         }
         recortar(ctx)
+    }
+
+    /** Una favorita nunca se borra al hacer espacio y sale el doble de veces en la rotación. */
+    @Synchronized
+    fun marcarFavorita(ctx: Context, foto: Foto, favorita: Boolean) {
+        editarIndice(ctx) { o -> if (o.getString("archivo") == foto.archivo.name) o.put("favorita", favorita); o }
+    }
+
+    /** Saca la foto de la rotación para siempre: se borra y no se vuelve a bajar. */
+    @Synchronized
+    fun ocultar(ctx: Context, foto: Foto) {
+        editarIndice(ctx) { o -> if (o.getString("archivo") == foto.archivo.name) null else o }
+        foto.archivo.delete()
+        vetadas(ctx).writeText(JSONArray(leerVetadas(ctx) + foto.archivo.name).toString())
+    }
+
+    private fun leerVetadas(ctx: Context): Set<String> {
+        val f = vetadas(ctx)
+        if (!f.exists()) return emptySet()
+        val arr = JSONArray(f.readText())
+        return (0 until arr.length()).map { arr.getString(it) }.toSet()
+    }
+
+    private fun editarIndice(ctx: Context, cambio: (JSONObject) -> JSONObject?) {
+        val f = indice(ctx)
+        if (!f.exists()) return
+        val arr = JSONArray(f.readText())
+        val nuevo = JSONArray()
+        for (i in 0 until arr.length()) cambio(arr.getJSONObject(i))?.let { nuevo.put(it) }
+        f.writeText(nuevo.toString())
     }
 
     private fun titulosDisponibles(ctx: Context): List<String> {
@@ -181,10 +214,11 @@ object Fondos {
         val (validas, descartadas) = todas.partition { o ->
             NO_NATURALEZA.none { it in o.optString("descripcion").lowercase() }
         }
-        val sobran = (validas.size - MAXIMO).coerceAtLeast(0)
+        val (favoritas, normales) = validas.partition { it.optBoolean("favorita") }
+        val sobran = (validas.size - MAXIMO).coerceAtLeast(0).coerceAtMost(normales.size)
         val quedan = JSONArray()
-        (descartadas + validas.take(sobran)).forEach { File(dir(ctx), it.getString("archivo")).delete() }
-        validas.drop(sobran).forEach { quedan.put(it) }
+        (descartadas + normales.take(sobran)).forEach { File(dir(ctx), it.getString("archivo")).delete() }
+        (favoritas + normales.drop(sobran)).forEach { quedan.put(it) }
         f.writeText(quedan.toString())
     }
 

@@ -19,7 +19,7 @@ Everything here was done over ADB from a Mac, with no root, and it's all reversi
 ## What's in here
 
 ```
-inicio/                  Android app: home screen + screensaver (Kotlin, no dependencies, ~70 KB)
+inicio/                  Android app: home screen + screensaver (Kotlin, no dependencies, ~100 KB)
 fase1-desactivar.txt     The 22 packages disabled in the debloat
 fase2-desactivar.txt     Google TV's launcher and setup app, disabled once Inicio is the home screen
 aplicar.sh               Disable every package in a list
@@ -56,9 +56,15 @@ File and script names are in Spanish; the table above is the translation.
 
 **Where the photo was taken.** Most featured pictures have GPS coordinates. Inicio turns them into a place name, in Spanish, with [OpenStreetMap Nominatim](https://nominatim.org/) (for example *"Scuol, Grisones, Suiza"*). The photo's own description and its credit go underneath.
 
-**Weather.** It comes from [Open-Meteo](https://open-meteo.com/), which needs no key. The TV's location comes from its public IP via [ipapi.co](https://ipapi.co/) and is cached for a day.
+**Weather.** It comes from [Open-Meteo](https://open-meteo.com/), which needs no key. The line under the clock gives current conditions and the day's high and low. The line below it gives the next sunset (or sunrise, at night) and a forecast every three hours. The TV's location comes from its public IP via [ipapi.co](https://ipapi.co/) and is cached for a day.
 
-**Apps.** The dock shows a fixed list (`FAVORITAS` in [`Apps.kt`](inicio/app/src/main/java/dev/robertovillegas/inicio/Apps.kt)), then *All apps*, *Inputs* (HDMI, through TCL's own TV app) and *Settings*. Apps that aren't installed are skipped.
+**Now playing.** When Spotify, SmartTube or any other app is playing, its cover art, title and artist appear above the clock, on the home screen and in the screensaver. Android only lets an app read other apps' media sessions if it holds an enabled notification listener, so Inicio ships an empty one (`Escucha`) and `instalar-inicio.sh` enables it over ADB.
+
+**Apps.** The dock starts from a default list (`FAVORITAS` in [`Apps.kt`](inicio/app/src/main/java/dev/robertovillegas/inicio/Apps.kt)). Next come *All apps*, one tile per HDMI input, and *Settings*. Each HDMI tile shows the name the input has in the TV's settings (for example "Xbox"), or "HDMI 1", "HDMI 2"... if it has none, and opens that input directly.
+
+**Editing the dock with the remote.** Hold OK on a dock app for *Move* or *Remove*. In move mode the tile jiggles like an iOS icon: ← and → move it, and OK or Back drops it. In *All apps*, hold OK on any app to add it to the dock or remove it. The order is saved on the TV.
+
+**Your photos.** Press ↑ from the dock to reach three buttons in the top-right corner. *Guardar foto* keeps the photo: a saved photo is never deleted to make room and shows up twice as often. *Otra foto* skips to the next one. *No mostrar* deletes the photo and makes sure it's never downloaded again.
 
 **Focus, Apple TV style.** The focused tile lifts with a small spring, casts a shadow and gets a diagonal glint across it. Push against an edge and the tile tilts toward it, then settles back. Pressing OK sinks it slightly before launching. *All apps* sizes its five columns from the real screen width over the same dimmed landscape.
 
@@ -71,8 +77,10 @@ Why not use Unsplash? It would work, but it needs a developer account and an API
 | Setting | Factory | Now |
 |---|---|---|
 | Screensaver | Google's ambient mode (with promoted content) after 10 min | **Paisajes** (from Inicio) after **5 min** |
-| Screen off | ~19 min | ~19 min (unchanged) |
+| Screen off | ~19 min | ~19 min by day, **10 min at night** |
 | Power off with no remote input, even during video | never | **4 h** |
+
+**Night mode.** Inicio uses the real sunset and sunrise for the TV's city, not a fixed schedule. After sunset the photos are darkened to about 55 % and warmed slightly, and the clock and credits dim. Inicio also lowers the screen-off timer to 10 minutes; changing that setting needs `WRITE_SECURE_SETTINGS`, which `instalar-inicio.sh` grants over ADB. In the morning the timer goes back to ~19 minutes.
 
 Nothing on screen stands still. Every photo slowly zooms and pans, a Ken Burns effect, and is replaced every 3 min on the home screen and every 75 s in the screensaver. In the screensaver, the clock also moves to a different corner every 4 min.
 
@@ -123,13 +131,27 @@ To undo:
 ./restaurar-todo.sh                 # undo everything
 ```
 
-To build Inicio by hand, you need JDK 21 and the Android SDK (`brew install --cask android-commandlinetools`, then `sdkmanager "platforms;android-35"`):
+### Installing a prebuilt APK
+
+Every [release](https://github.com/RobertoVillegas/tcl-tv/releases) has a signed `inicio-vX.Y.Z.apk`, built by GitHub Actions ([`release.yml`](.github/workflows/release.yml)), so you don't need the Android SDK:
+
+```bash
+adb install -r inicio-v0.2.0.apk
+```
+
+Then run the `adb shell` lines in [`instalar-inicio.sh`](instalar-inicio.sh): the auto-start permission, the music listener, the night timer and the screensaver.
+
+### Building it yourself
+
+You need JDK 21 and the Android SDK (`brew install --cask android-commandlinetools`, then `sdkmanager "platforms;android-35"`):
 
 ```bash
 cd inicio && ./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk
 ```
 
-The release build is signed with the local debug key. It's meant to be sideloaded over ADB, not published.
+If `~/.android/inicio-release.properties` exists (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`), the build is signed with that key. Otherwise it uses your local debug key, which is fine for a fork. Android only installs an update signed with the same key, so if you switch keys you have to uninstall first.
+
+To cut a release, push a tag such as `v0.2.0`. The workflow needs three repository secrets: `INICIO_KEYSTORE_B64` (the keystore in base64), `INICIO_STORE_PASSWORD` and `INICIO_KEY_PASSWORD`.
 
 ---
 

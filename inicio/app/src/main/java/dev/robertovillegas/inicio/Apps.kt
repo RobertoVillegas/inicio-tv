@@ -1,5 +1,7 @@
 package dev.robertovillegas.inicio
 
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
@@ -22,11 +24,40 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 
-data class App(val nombre: String, val imagen: Drawable?, val abrir: Intent)
+data class App(val nombre: String, val imagen: Drawable?, val abrir: Intent) {
+    val paquete: String? get() = abrir.component?.packageName
+}
+
+/** Las apps del dock y su orden, guardados en la TV. */
+object Dock {
+    private const val CLAVE = "paquetes"
+
+    /** Sube cada vez que cambia el dock, para que el inicio sepa que debe redibujarlo. */
+    var version = 0
+        private set
+
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("dock", Context.MODE_PRIVATE)
+
+    fun lista(ctx: Context): List<String> =
+        prefs(ctx).getString(CLAVE, null)?.split(",")?.filter { it.isNotEmpty() } ?: Apps.FAVORITAS
+
+    fun guardar(ctx: Context, paquetes: List<String>) {
+        prefs(ctx).edit().putString(CLAVE, paquetes.joinToString(",")).apply()
+        version++
+    }
+
+    fun contiene(ctx: Context, paquete: String) = paquete in lista(ctx)
+
+    fun agregar(ctx: Context, paquete: String) {
+        if (!contiene(ctx, paquete)) guardar(ctx, lista(ctx) + paquete)
+    }
+
+    fun quitar(ctx: Context, paquete: String) = guardar(ctx, lista(ctx) - paquete)
+}
 
 object Apps {
-    // El orden del dock. Las que no estén instaladas simplemente no aparecen.
-    private val FAVORITAS = listOf(
+    // El dock de fábrica. Se edita desde la TV (mantener OK sobre una app) y queda en Dock.
+    val FAVORITAS = listOf(
         "com.google.android.youtube.tv",
         "com.netflix.ninja",
         "com.amazon.amazonvideo.livingroom",
@@ -47,8 +78,8 @@ object Apps {
     )
 
     fun favoritas(ctx: Context): List<App> {
-        val porPaquete = todas(ctx).associateBy { it.abrir.component?.packageName }
-        return FAVORITAS.mapNotNull { porPaquete[it] }
+        val porPaquete = todas(ctx).associateBy { it.paquete }
+        return Dock.lista(ctx).mapNotNull { porPaquete[it] }
     }
 
     fun todas(ctx: Context): List<App> {
@@ -92,12 +123,17 @@ object Apps {
  * proyecta sombra y un brillo cruza la superficie. Si el control empuja contra una orilla,
  * la tarjeta se inclina un poco hacia ese lado y regresa.
  */
-class Tarjeta(ctx: Context, app: App, ancho: Int, alto: Int) : FrameLayout(ctx) {
+class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(ctx) {
     private val marco = FrameLayout(ctx)
     private val brillo = View(ctx)
     private val reflejo = View(ctx)
     private val nombre = TextView(ctx)
     private val anchoPx = dp(ancho).toFloat()
+    private var mantenida = false
+    private var temblor: ObjectAnimator? = null
+
+    /** Qué hacer al dejar presionado OK sobre la tarjeta. */
+    var alMantener: (() -> Unit)? = null
 
     init {
         isFocusable = true
@@ -179,15 +215,26 @@ class Tarjeta(ctx: Context, app: App, ancho: Int, alto: Int) : FrameLayout(ctx) 
 
     private fun tecla(code: Int, ev: KeyEvent): Boolean {
         val centro = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
-        if (centro && ev.action == KeyEvent.ACTION_DOWN && ev.repeatCount == 0) {
-            marco.animate().scaleX(1.05f).scaleY(1.05f).setInterpolator(DecelerateInterpolator())
-                .setDuration(90).start()
+        if (centro && ev.action == KeyEvent.ACTION_DOWN) {
+            if (ev.repeatCount == 0) {
+                mantenida = false
+                marco.animate().scaleX(1.05f).scaleY(1.05f).setInterpolator(DecelerateInterpolator())
+                    .setDuration(90).start()
+            } else if (ev.isLongPress && !mantenida && alMantener != null) {
+                mantenida = true
+                marco.animate().scaleX(1.12f).scaleY(1.12f).setInterpolator(OvershootInterpolator(2f))
+                    .setDuration(220).start()
+                alMantener?.invoke()
+            }
             return true
         }
         if (centro && ev.action == KeyEvent.ACTION_UP) {
-            marco.animate().scaleX(1.12f).scaleY(1.12f).setInterpolator(OvershootInterpolator(2f))
-                .setDuration(220).start()
-            performClick()
+            if (!mantenida) {
+                marco.animate().scaleX(1.12f).scaleY(1.12f).setInterpolator(OvershootInterpolator(2f))
+                    .setDuration(220).start()
+                performClick()
+            }
+            mantenida = false
             return true
         }
         if (ev.action == KeyEvent.ACTION_DOWN) {
@@ -201,6 +248,20 @@ class Tarjeta(ctx: Context, app: App, ancho: Int, alto: Int) : FrameLayout(ctx) 
             if (focusSearch(direccion) == null) inclinar(direccion)
         }
         return false
+    }
+
+    /** Tiembla como los iconos de iOS mientras se está moviendo dentro del dock. */
+    fun temblar(si: Boolean) {
+        temblor?.cancel()
+        temblor = null
+        marco.rotation = 0f
+        if (!si) return
+        temblor = ObjectAnimator.ofFloat(marco, View.ROTATION, -1.8f, 1.8f).apply {
+            duration = 130
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            start()
+        }
     }
 
     private fun inclinar(direccion: Int) {

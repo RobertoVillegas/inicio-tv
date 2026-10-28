@@ -1,29 +1,38 @@
 package dev.robertovillegas.inicio
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.View
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.TextView
 import java.util.concurrent.Executors
 
 class HomeActivity : Activity() {
     private lateinit var escena: Escena
     private lateinit var dock: HorizontalScrollView
     private lateinit var fila: LinearLayout
+    private lateinit var controlesFoto: LinearLayout
+    private lateinit var botonFavorita: TextView
+    private lateinit var sonando: Sonando
     private val principal = Handler(Looper.getMainLooper())
     private val trabajo = Executors.newSingleThreadExecutor()
     private var modoCuadro = false
+    private var versionDock = -1
+
+    // Mientras se mueve una app dentro del dock: cuál es y en qué posición va.
+    private var moviendo: Tarjeta? = null
 
     // Sin tocar el control, el dock se esconde y queda solo el paisaje.
     private val ocultarDock = Runnable { entrarModoCuadro() }
@@ -31,9 +40,15 @@ class HomeActivity : Activity() {
         override fun run() {
             trabajo.execute {
                 val c = ClimaLocal.obtener(this@HomeActivity)
-                principal.post { escena.ponerClima(c) }
+                principal.post { escena.ponerClima(c); revisarNoche() }
             }
             principal.postDelayed(this, 30 * 60_000L)
+        }
+    }
+    private val cadaMinuto = object : Runnable {
+        override fun run() {
+            revisarNoche()
+            principal.postDelayed(this, 60_000L)
         }
     }
     private val refrescarFondos = object : Runnable {
@@ -64,11 +79,65 @@ class HomeActivity : Activity() {
             addView(fila)
         }
         raiz.addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+
+        // Arriba a la derecha: guardar, cambiar u ocultar la foto. Se llega con ↑ desde el dock.
+        botonFavorita = chip("♡  Guardar foto") { alternarFavorita() }
+        controlesFoto = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(botonFavorita)
+            addView(chip("↻  Otra foto") { escena.otra() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = escena.dp(10) })
+            addView(chip("✕  No mostrar") { ocultarFoto() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = escena.dp(10) })
+        }
+        raiz.addView(controlesFoto, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+            setMargins(0, escena.dp(32), escena.dp(48), 0)
+        })
+        escena.alCambiarFoto = { foto -> botonFavorita.text = if (foto.favorita) "♥  Guardada" else "♡  Guardar foto" }
+
         raiz.clipChildren = false
         setContentView(raiz)
+        sonando = Sonando(this) { escena.ponerCancion(it) }
         acomodar()
-        llenarDock()
         principal.post(refrescarFondos)
+    }
+
+    private fun chip(texto: String, accion: () -> Unit) = TextView(this).apply {
+        text = texto
+        isFocusable = true
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        setPadding(escena.dp(14), escena.dp(7), escena.dp(14), escena.dp(7))
+        val normal = GradientDrawable().apply { cornerRadius = escena.dp(20).toFloat(); setColor(0x40000000) }
+        val enfocado = GradientDrawable().apply { cornerRadius = escena.dp(20).toFloat(); setColor(Color.WHITE) }
+        background = normal
+        setTextColor(Color.WHITE)
+        alpha = 0.75f
+        setOnFocusChangeListener { _, foco ->
+            background = if (foco) enfocado else normal
+            setTextColor(if (foco) 0xFF101418.toInt() else Color.WHITE)
+            animate().alpha(if (foco) 1f else 0.75f).scaleX(if (foco) 1.06f else 1f)
+                .scaleY(if (foco) 1.06f else 1f).setDuration(150).start()
+        }
+        setOnClickListener { accion() }
+    }
+
+    private fun alternarFavorita() {
+        val foto = escena.actual ?: return
+        val nueva = !foto.favorita
+        trabajo.execute {
+            Fondos.marcarFavorita(this, foto, nueva)
+            principal.post {
+                botonFavorita.text = if (nueva) "♥  Guardada" else "♡  Guardar foto"
+                escena.recargar(saltar = false)
+            }
+        }
+    }
+
+    private fun ocultarFoto() {
+        val foto = escena.actual ?: return
+        trabajo.execute {
+            Fondos.ocultar(this, foto)
+            principal.post { escena.recargar(saltar = true) }
+        }
     }
 
     private fun acomodar() {
@@ -81,20 +150,63 @@ class HomeActivity : Activity() {
     }
 
     private fun llenarDock() {
+        versionDock = Dock.version
         fila.removeAllViews()
-        val extras = listOf(
-            App("Todas las apps", icono(android.R.drawable.ic_dialog_dialer),
-                Intent(this, AppsActivity::class.java)),
-            App("Entradas", icono(android.R.drawable.ic_menu_slideshow), Apps.entradas()),
-            App("Ajustes", icono(android.R.drawable.ic_menu_preferences), Apps.ajustes()),
-        )
-        (Apps.favoritas(this) + extras).forEach { app ->
-            fila.addView(
-                Tarjeta(this, app, 128, 72),
-                LinearLayout.LayoutParams(-2, -2).apply { marginEnd = escena.dp(14) },
-            )
+        val hdmi = Entradas.hdmi(this)
+        val extras = listOf(App("Todas las apps", icono(android.R.drawable.ic_dialog_dialer),
+            Intent(this, AppsActivity::class.java))) +
+            hdmi.ifEmpty { listOf(App("Entradas", icono(android.R.drawable.ic_menu_slideshow), Apps.entradas())) } +
+            App("Ajustes", icono(android.R.drawable.ic_menu_preferences), Apps.ajustes())
+        Apps.favoritas(this).forEach { app ->
+            val t = Tarjeta(this, app, 128, 72)
+            t.alMantener = { menuDock(t, app) }
+            agregarAlDock(t)
         }
+        extras.forEach { agregarAlDock(Tarjeta(this, it, 128, 72)) }
         fila.getChildAt(0)?.requestFocus()
+    }
+
+    private fun agregarAlDock(t: Tarjeta) =
+        fila.addView(t, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = escena.dp(14) })
+
+    private fun menuDock(t: Tarjeta, app: App) {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(app.nombre)
+            .setItems(arrayOf("Mover", "Quitar del inicio", "Cancelar")) { _, i ->
+                when (i) {
+                    0 -> empezarAMover(t)
+                    1 -> app.paquete?.let { Dock.quitar(this, it); llenarDock() }
+                }
+            }
+            .show()
+    }
+
+    private fun empezarAMover(t: Tarjeta) {
+        moviendo = t
+        t.temblar(true)
+        t.requestFocus()
+    }
+
+    private fun moverA(direccion: Int) {
+        val t = moviendo ?: return
+        val i = fila.indexOfChild(t)
+        val favoritas = Dock.lista(this).size.coerceAtMost(fila.childCount)
+        val j = i + direccion
+        // Solo se mueve entre las apps del dock, no entre los accesos fijos del final.
+        if (j < 0 || j >= favoritas) return
+        fila.removeViewAt(i)
+        fila.addView(t, j, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = escena.dp(14) })
+        t.requestFocus()
+    }
+
+    private fun terminarDeMover() {
+        val t = moviendo ?: return
+        moviendo = null
+        t.temblar(false)
+        val orden = (0 until fila.childCount).mapNotNull { (fila.getChildAt(it) as? Tarjeta)?.app?.paquete }
+            .filter { Dock.contiene(this, it) }
+        Dock.guardar(this, orden)
+        versionDock = Dock.version
     }
 
     private fun icono(res: Int) = LayerDrawable(arrayOf(
@@ -102,17 +214,29 @@ class HomeActivity : Activity() {
         getDrawable(res)!!.mutate().apply { setTint(Color.WHITE) },
     )).apply { setLayerInset(1, escena.dp(52), escena.dp(22), escena.dp(52), escena.dp(22)) }
 
+    private fun revisarNoche() {
+        val noche = Noche.esDeNoche()
+        escena.ponerNoche(noche)
+        trabajo.execute { Noche.ajustarApagado(this, noche) }
+    }
+
     override fun onResume() {
         super.onResume()
+        if (versionDock != Dock.version) llenarDock()
         escena.iniciar(180_000L)
+        sonando.iniciar()
         principal.post(actualizarClima)
+        principal.post(cadaMinuto)
         salirModoCuadro()
     }
 
     override fun onPause() {
         super.onPause()
+        terminarDeMover()
         escena.detener()
+        sonando.detener()
         principal.removeCallbacks(actualizarClima)
+        principal.removeCallbacks(cadaMinuto)
         principal.removeCallbacks(ocultarDock)
     }
 
@@ -131,6 +255,14 @@ class HomeActivity : Activity() {
             if (event.action == KeyEvent.ACTION_UP) salirModoCuadro()
             return true
         }
+        if (moviendo != null) {
+            if (event.action == KeyEvent.ACTION_DOWN) when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> moverA(-1)
+                KeyEvent.KEYCODE_DPAD_RIGHT -> moverA(1)
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BACK -> terminarDeMover()
+            }
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -142,6 +274,7 @@ class HomeActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (Intent.ACTION_MAIN == intent.action) {
+            terminarDeMover()
             salirModoCuadro()
             dock.smoothScrollTo(0, 0)
             fila.getChildAt(0)?.requestFocus()
@@ -149,14 +282,17 @@ class HomeActivity : Activity() {
     }
 
     private fun entrarModoCuadro() {
+        if (moviendo != null) return
         modoCuadro = true
         dock.animate().alpha(0f).translationY(escena.dp(40).toFloat()).setDuration(600).start()
+        controlesFoto.animate().alpha(0f).setDuration(600).start()
         acomodar()
     }
 
     private fun salirModoCuadro() {
         modoCuadro = false
         dock.animate().alpha(1f).translationY(0f).setDuration(250).start()
+        controlesFoto.animate().alpha(1f).setDuration(250).start()
         acomodar()
         principal.removeCallbacks(ocultarDock)
         principal.postDelayed(ocultarDock, 45_000L)

@@ -1,0 +1,47 @@
+name: Release
+
+# Push a tag like v0.2.0 and this builds the signed APK and attaches it to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Write signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.INICIO_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.INICIO_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.INICIO_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/inicio.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/inicio.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=inicio"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > "$RUNNER_TEMP/firma.properties"
+          echo "INICIO_FIRMA=$RUNNER_TEMP/firma.properties" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        working-directory: inicio
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp inicio/app/build/outputs/apk/release/app-release.apk "inicio-${GITHUB_REF_NAME}.apk"
+          gh release create "$GITHUB_REF_NAME" "inicio-${GITHUB_REF_NAME}.apk" \
+            --title "Inicio ${GITHUB_REF_NAME}" --generate-notes

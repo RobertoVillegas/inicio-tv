@@ -3,6 +3,8 @@ package dev.robertovillegas.inicio
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -11,12 +13,15 @@ import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 import kotlin.random.Random
 
@@ -24,8 +29,9 @@ fun View.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
 /**
  * Fondo de paisajes que se mueve despacio (efecto Ken Burns) y cambia de foto cada cierto
- * tiempo, con la hora, el clima y los datos de la foto encima. La comparten el inicio y el
- * protector de pantalla. El movimiento constante evita dejar una imagen fija en el panel.
+ * tiempo, con la hora, el clima, lo que está sonando y los datos de la foto encima. La
+ * comparten el inicio y el protector de pantalla. El movimiento constante evita dejar una
+ * imagen fija en el panel.
  */
 class Escena(ctx: Context) : FrameLayout(ctx) {
     private val capas = arrayOf(capa(), capa())
@@ -36,6 +42,12 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
     private var siguiente = 0
     private var intervalo = 180_000L
     private var activa = false
+    private var nocturna = false
+
+    /** La foto en pantalla, para marcarla como favorita u ocultarla. */
+    var actual: Foto? = null
+        private set
+    var alCambiarFoto: ((Foto) -> Unit)? = null
 
     val info = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
     val credito = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
@@ -57,6 +69,38 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
         alpha = 0.85f
         visibility = GONE
     }
+    private val pronostico = TextView(ctx).apply {
+        estilo(this, 14, Typeface.create("sans-serif", Typeface.NORMAL))
+        alpha = 0.7f
+        visibility = GONE
+    }
+
+    private val sonando = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        visibility = GONE
+        alpha = 0f
+    }
+    private val portada = ImageView(ctx).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        background = GradientDrawable().apply { cornerRadius = dp(6).toFloat(); setColor(0x33FFFFFF) }
+        clipToOutline = true
+        outlineProvider = ViewOutlineProvider.BACKGROUND
+    }
+    private val cancion = TextView(ctx).apply {
+        estilo(this, 15, Typeface.create("sans-serif-medium", Typeface.NORMAL))
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        maxWidth = dp(320)
+    }
+    private val artista = TextView(ctx).apply {
+        estilo(this, 13, Typeface.create("sans-serif", Typeface.NORMAL))
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        maxWidth = dp(320)
+        alpha = 0.75f
+    }
+
     private val lugar = TextView(ctx).apply {
         estilo(this, 16, Typeface.create("sans-serif-medium", Typeface.NORMAL))
         gravity = Gravity.END
@@ -93,9 +137,17 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
             )
         }, LayoutParams(LayoutParams.MATCH_PARENT, dp(120), Gravity.TOP))
 
+        val textos = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        textos.addView(cancion)
+        textos.addView(artista)
+        sonando.addView(portada, LinearLayout.LayoutParams(dp(44), dp(44)))
+        sonando.addView(textos, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(12) })
+
+        info.addView(sonando, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(14) })
         info.addView(hora)
         info.addView(fecha)
         info.addView(clima, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        info.addView(pronostico, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
         credito.addView(lugar)
         credito.addView(descripcion)
         credito.addView(autor, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
@@ -120,16 +172,19 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
         intervalo = intervaloMs
         activa = true
         trabajo.execute {
-            fotos = Fondos.listar(context).shuffled()
+            fotos = rotacion()
             principal.post { avanzar() }
             // Con pocas fotos guardadas, baja más y las suma a la rotación.
             if (fotos.size < 12) {
                 Fondos.refrescar(context)
-                fotos = Fondos.listar(context).shuffled()
+                fotos = rotacion()
                 principal.post { if (capas.all { it.drawable == null }) avanzar() }
             }
         }
     }
+
+    // Las favoritas entran dos veces, así salen el doble.
+    private fun rotacion() = Fondos.listar(context).let { l -> (l + l.filter { it.favorita }).shuffled() }
 
     fun detener() {
         activa = false
@@ -144,13 +199,27 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
 
     private val tic = Runnable { avanzar() }
 
+    /** Pasa a la siguiente foto ya, sin esperar el intervalo. */
+    fun otra() = avanzar()
+
+    /** Vuelve a leer la lista de fotos, por ejemplo después de marcar u ocultar una. */
+    fun recargar(saltar: Boolean) {
+        trabajo.execute {
+            fotos = rotacion()
+            siguiente = 0
+            if (saltar) principal.post { avanzar() }
+        }
+    }
+
     private fun avanzar() {
         if (!activa) return
         principal.removeCallbacks(tic)
         principal.postDelayed(tic, intervalo)
         val lista = fotos
         if (lista.isEmpty()) return
-        val foto = lista[siguiente++ % lista.size]
+        var foto = lista[siguiente++ % lista.size]
+        // Evita repetir la misma foto dos veces seguidas (pasa con las favoritas duplicadas).
+        if (lista.size > 1 && foto.archivo == actual?.archivo) foto = lista[siguiente++ % lista.size]
         trabajo.execute {
             val bmp = Fondos.decodificar(foto) ?: return@execute
             principal.post { if (activa) mostrar(bmp, foto) }
@@ -163,6 +232,7 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
         val entra = capas[visible]
         entra.animate().cancel()
         entra.setImageBitmap(bmp)
+        entra.colorFilter = if (nocturna) FILTRO_NOCHE else null
 
         // Arranca un poco ampliada y se desplaza hacia una esquina al azar durante toda su vida.
         val desplazamiento = dp(24).toFloat()
@@ -182,12 +252,14 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
             .start()
         sale.animate().alpha(0f).setDuration(2500).withEndAction { sale.setImageDrawable(null) }.start()
 
+        actual = foto
         lugar.text = foto.lugar
         lugar.visibility = if (foto.lugar.isEmpty()) GONE else VISIBLE
         descripcion.text = foto.descripcion
         descripcion.visibility = if (foto.descripcion.isEmpty()) GONE else VISIBLE
         autor.text = listOf(foto.autor, foto.licencia).filter { it.isNotEmpty() }
             .joinToString(" · ").let { if (it.isEmpty()) "" else "Foto: $it · Wikimedia Commons" }
+        alCambiarFoto?.invoke(foto)
     }
 
     fun ponerClima(c: Clima?) {
@@ -198,5 +270,47 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
             if (c.ciudad.isNotEmpty()) append("   ·   ${c.ciudad}")
         }
         clima.visibility = VISIBLE
+        val hhmm = DateTimeFormatter.ofPattern("H:mm")
+        val sol = if (c.esDeNoche()) {
+            val amanece = if (LocalDateTime.now().isBefore(c.amanecer)) c.amanecer else c.amanecerManana
+            "Amanece ${amanece.format(hhmm)}"
+        } else {
+            "Atardece ${c.atardecer.format(hhmm)}"
+        }
+        val horas = c.proximas.joinToString("   ") { (h, t) -> "${h.hour} h  $t°" }
+        pronostico.text = if (horas.isEmpty()) sol else "$sol      $horas"
+        pronostico.visibility = VISIBLE
+    }
+
+    fun ponerCancion(c: Cancion?) {
+        if (c == null) {
+            sonando.animate().alpha(0f).setDuration(400).withEndAction { sonando.visibility = GONE }.start()
+            return
+        }
+        cancion.text = c.titulo
+        artista.text = listOf(c.artista, c.app).filter { it.isNotEmpty() }.joinToString("  ·  ")
+        portada.setImageBitmap(c.portada)
+        portada.visibility = if (c.portada == null) GONE else VISIBLE
+        sonando.visibility = VISIBLE
+        sonando.animate().alpha(1f).setDuration(400).start()
+    }
+
+    /** De noche: fotos más oscuras y cálidas, y la hora con menos brillo. */
+    fun ponerNoche(noche: Boolean) {
+        if (noche == nocturna) return
+        nocturna = noche
+        capas.forEach { it.colorFilter = if (noche) FILTRO_NOCHE else null }
+        info.animate().alpha(if (noche) 0.7f else 1f).setDuration(1500).start()
+        credito.animate().alpha(if (noche) 0.6f else 1f).setDuration(1500).start()
+    }
+
+    private companion object {
+        // 55 % del brillo, con el azul un poco más bajo para que la luz se sienta cálida.
+        val FILTRO_NOCHE = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+            0.58f, 0f, 0f, 0f, 0f,
+            0f, 0.53f, 0f, 0f, 0f,
+            0f, 0f, 0.42f, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f,
+        )))
     }
 }

@@ -1,6 +1,7 @@
 package dev.robertovillegas.inicio
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -53,7 +54,9 @@ class AppsActivity : Activity() {
             setPadding(0, dp(28), 0, 0)
         }
         Apps.todas(this).forEachIndexed { i, app ->
-            rejilla.addView(Tarjeta(this, app, ancho, alto), GridLayout.LayoutParams().apply {
+            val t = Tarjeta(this, app, ancho, alto)
+            t.alMantener = { menu(app) }
+            rejilla.addView(t, GridLayout.LayoutParams().apply {
                 width = dp(ancho)
                 setMargins(0, 0, if (i % columnas == columnas - 1) 0 else dp(hueco), dp(44))
             })
@@ -83,6 +86,18 @@ class AppsActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         escena.liberar()
+    }
+
+    // Mantener OK sobre una app la agrega al dock del inicio o la quita.
+    private fun menu(app: App) {
+        val paquete = app.paquete ?: return
+        val enDock = Dock.contiene(this, paquete)
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(app.nombre)
+            .setItems(arrayOf(if (enDock) "Quitar del inicio" else "Agregar al inicio", "Cancelar")) { _, i ->
+                if (i == 0) if (enDock) Dock.quitar(this, paquete) else Dock.agregar(this, paquete)
+            }
+            .show()
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()

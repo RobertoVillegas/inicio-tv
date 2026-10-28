@@ -16,6 +16,14 @@ class PaisajesDream : DreamService() {
     private val principal = Handler(Looper.getMainLooper())
     private val trabajo = Executors.newSingleThreadExecutor()
     private var esquina = 0
+    private lateinit var sonando: Sonando
+
+    private val cadaMinuto = object : Runnable {
+        override fun run() {
+            escena.ponerNoche(Noche.esDeNoche())
+            principal.postDelayed(this, 60_000L)
+        }
+    }
 
     private val mover = object : Runnable {
         override fun run() {
@@ -53,6 +61,7 @@ class PaisajesDream : DreamService() {
         isFullscreen = true
         escena = Escena(this)
         setContentView(escena)
+        sonando = Sonando(this) { escena.ponerCancion(it) }
         val m = escena.dp(56)
         (escena.info.layoutParams as FrameLayout.LayoutParams).setMargins(m, m, m, m)
         (escena.credito.layoutParams as FrameLayout.LayoutParams).setMargins(m, m, m, m)
@@ -61,9 +70,11 @@ class PaisajesDream : DreamService() {
     override fun onDreamingStarted() {
         super.onDreamingStarted()
         escena.iniciar(75_000L)
+        sonando.iniciar()
+        principal.post(cadaMinuto)
         trabajo.execute {
             val c = ClimaLocal.obtener(this)
-            principal.post { escena.ponerClima(c) }
+            principal.post { escena.ponerClima(c); escena.ponerNoche(Noche.esDeNoche()) }
         }
         principal.postDelayed(mover, 4 * 60_000L)
     }
@@ -71,6 +82,7 @@ class PaisajesDream : DreamService() {
     override fun onDreamingStopped() {
         super.onDreamingStopped()
         principal.removeCallbacksAndMessages(null)
+        sonando.detener()
         escena.detener()
     }
 

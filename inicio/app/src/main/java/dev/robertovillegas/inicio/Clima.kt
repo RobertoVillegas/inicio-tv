@@ -2,6 +2,7 @@ package dev.robertovillegas.inicio
 
 import android.content.Context
 import android.util.Log
+import java.time.LocalDateTime
 import kotlin.math.roundToInt
 
 data class Clima(
@@ -10,29 +11,56 @@ data class Clima(
     val maxima: Int,
     val minima: Int,
     val estado: String,
-)
+    val proximas: List<Pair<LocalDateTime, Int>>,
+    val amanecer: LocalDateTime,
+    val atardecer: LocalDateTime,
+    val amanecerManana: LocalDateTime,
+) {
+    /** Noche de verdad, según el sol de la ciudad, no un horario fijo. */
+    fun esDeNoche(ahora: LocalDateTime = LocalDateTime.now()) = ahora.isAfter(atardecer) || ahora.isBefore(amanecer)
+}
 
 /** Clima local con Open-Meteo; la ubicación de la TV sale de su IP pública. Ninguno pide llave. */
 object ClimaLocal {
     private const val TAG = "Clima"
     private const val UN_DIA = 24L * 3600 * 1000
 
+    @Volatile
+    var ultimo: Clima? = null
+        private set
+
     fun obtener(ctx: Context): Clima? = try {
         val (lat, lon, ciudad) = ubicacion(ctx)
         val r = Red.json(
             "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
                 "&current=temperature_2m,weather_code" +
-                "&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1"
+                "&hourly=temperature_2m" +
+                "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset" +
+                "&timezone=auto&forecast_days=2"
         )
         val actual = r.getJSONObject("current")
         val diario = r.getJSONObject("daily")
+        val horas = r.getJSONObject("hourly")
+        val tiempos = horas.getJSONArray("time")
+        val temps = horas.getJSONArray("temperature_2m")
+        val ahora = LocalDateTime.now()
+        // Tres puntos del pronóstico, cada tres horas a partir de la siguiente hora en punto.
+        val proximas = (0 until tiempos.length())
+            .map { LocalDateTime.parse(tiempos.getString(it)) to temps.getDouble(it).roundToInt() }
+            .filter { it.first.isAfter(ahora) }
+            .filterIndexed { i, _ -> i % 3 == 2 }
+            .take(3)
         Clima(
             ciudad,
             actual.getDouble("temperature_2m").roundToInt(),
             diario.getJSONArray("temperature_2m_max").getDouble(0).roundToInt(),
             diario.getJSONArray("temperature_2m_min").getDouble(0).roundToInt(),
             estado(actual.getInt("weather_code")),
-        )
+            proximas,
+            LocalDateTime.parse(diario.getJSONArray("sunrise").getString(0)),
+            LocalDateTime.parse(diario.getJSONArray("sunset").getString(0)),
+            LocalDateTime.parse(diario.getJSONArray("sunrise").getString(1)),
+        ).also { ultimo = it }
     } catch (e: Exception) {
         Log.w(TAG, "Sin clima", e)
         null
