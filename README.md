@@ -1,136 +1,156 @@
-# TV TCL de la sala: declutter e inicio propio
+# tcl-tv
 
-Documentación de los cambios hechos a la Smart TV **TCL "Smart TV Pro"** de la sala, a partir del **28 de octubre de 2026**.
-Si te encontraste esta carpeta y no sabes qué le pasó a la TV, empieza aquí.
+**A quiet, ad-free home screen for a TCL Google TV, plus a reversible debloat.**
 
----
+Google TV's home screen opens on a full-width ad (the "hero") with a row of sponsored picks under it, and there's no setting to switch them off. This repo swaps the home screen for a small one I wrote, called **Inicio**: a slowly drifting nature photograph, the time, the local weather, where the photo was taken, and only the apps the household actually uses. Inicio also runs as the TV's screensaver, and the TV's sleep timers are set so the panel is never left on a still image.
 
-## TL;DR
+| Before: stock Google TV | After: Inicio |
+|---|---|
+| ![Google TV home with a full-screen promo and sponsored rows](docs/google-tv-before.jpg) | ![Inicio home: misty Estonian bog, clock, weather and an app dock](docs/inicio-home.jpg) |
 
-- Se desactivaron **22 apps** que no se usan: streaming sin uso, Asistente de voz y anuncios de TCL.
-- Se instaló **SmartTube** para que los invitados vean YouTube sin la cuenta del dueño.
-- Se hizo una app de inicio propia, **Inicio**. Muestra paisajes de Wikimedia Commons que se mueven despacio, la hora, el clima, el lugar de cada foto y solo las apps que se usan.
-- Inicio también funciona como **protector de pantalla** y se configuraron tiempos de apagado para cuidar el panel.
+![The Paisajes screensaver: a lake in Friesland with the clock in the corner](docs/screensaver.jpg)
 
-**No se borró nada.** Todo es reversible, y en `respaldo-original/` está el estado de fábrica.
+*The UI is in Spanish because the TV is in a Mexican household. Photos come from Wikimedia Commons; each one carries its author and license on screen.*
 
-Para revertirlo todo: `./restaurar-todo.sh`.
-Si la TV se queda sin pantalla de inicio: `./rescate-launcher.sh`.
+Everything here was done over ADB from a Mac, with no root, and it's all reversible. Two people built on the same idea and inspired this one: [CleanFrame](https://github.com/nthnclrk/CleanFrame) (a Samsung The Frame / Tizen version) and a [TCL Google TV walkthrough](https://www.youtube.com/watch?v=i0ytu6k8uac). The sister repo [cobia-tv](https://github.com/RobertoVillegas/cobia-tv) covers a different TV in the same house.
 
 ---
 
-## El equipo
+## What's in here
+
+```
+inicio/                  Android app: home screen + screensaver (Kotlin, no dependencies, ~70 KB)
+fase1-desactivar.txt     The 22 packages disabled in the debloat
+fase2-desactivar.txt     Google TV's launcher, disabled only once Inicio is the home screen
+aplicar.sh               Disable every package in a list
+instalar-inicio.sh       Build + install Inicio, make it the screensaver, set sleep timers
+poner-inicio.sh          Make Inicio the home screen and disable Google TV's launcher
+instalar-smarttube.sh    Install or update SmartTube from its GitHub releases
+rescate-launcher.sh      EMERGENCY: no home screen? Bring Google TV's back and reboot
+restaurar-todo.sh        Undo everything and reboot
+restaurar-tv.sh          The same undo, run on the TV itself (also stored at /sdcard/restaurar-tv.sh)
+respaldo-original/       Factory package state captured before any change
+docs/                    Screenshots
+```
+
+File and script names are in Spanish; the table above is the translation.
+
+---
+
+## The TV
 
 | | |
 |---|---|
-| Modelo | TCL "Smart TV Pro" (device `G10`), 55", panel 3840×2160 |
-| Nombre en la red | `TV de Sala` |
-| IP | `192.168.0.122` por DHCP, así que puede cambiar (ver abajo) |
-| SO | Google TV, Android 12, build `STT2.230203.001` |
-| Parche de seguridad | 2025-12-05 |
+| Model | TCL "Smart TV Pro" (device `G10`), 55", 3840×2160 panel |
+| OS | Google TV on Android 12, build `STT2.230203.001`, security patch 2025-12-05 |
 | SoC | Realtek RTD2875P (`rtd6748`) |
-| RAM | 1.8 GB |
-| Almacenamiento | 7.9 GB en `/data` |
-| Arquitectura | **`armeabi-v7a` solamente (32 bits)**: al bajar APKs, usa la variante `armeabi-v7a` |
-| Interfaz | Se dibuja a **1920×1080**. Solo el video sale en 4K |
+| RAM / storage | 1.8 GB / 7.9 GB |
+| ABI | **`armeabi-v7a` only (32-bit).** Always download the `armeabi-v7a` APK, never `arm64-v8a` |
+| UI resolution | **1920×1080.** Only video plays at 4K, so wallpapers bigger than 1920 px just waste memory |
 
 ---
 
-## Cómo conectarse
+## Inicio: the home screen
 
-```bash
-brew install --cask android-platform-tools   # si no tienes adb
-adb connect 192.168.0.122:5555
-adb devices -l                                # debe decir "device", no "unauthorized"
-```
+**Wallpapers.** Inicio uses featured pictures from [Wikimedia Commons](https://commons.wikimedia.org/) in six categories: mountains, lakes, forests, beaches, waterfalls and coasts (about 560 photos). They're free, they need no API key, and they're among the best photos on Commons. Inicio keeps up to 40 of them on the TV, so the screen still works offline, and fetches six new ones every few hours. It skips portraits and panoramas, plus anything whose description mentions trains, villages, churches and the like, because the categories aren't purely nature.
 
-**Si la IP cambió**, la TV se anuncia sola por mDNS:
+**Where the photo was taken.** Most featured pictures have GPS coordinates. Inicio turns them into a place name, in Spanish, with [OpenStreetMap Nominatim](https://nominatim.org/) (for example *"Scuol, Grisones, Suiza"*). The photo's own description and its credit go underneath.
 
-```bash
-adb mdns services        # busca adb-D00650B30610C507F  _adb._tcp  <IP>:5555
-```
+**Weather.** It comes from [Open-Meteo](https://open-meteo.com/), which needs no key. The TV's location comes from its public IP via [ipapi.co](https://ipapi.co/) and is cached for a day.
 
-Todos los scripts aceptan otra IP con `TV=<ip>:5555 ./script.sh`.
+**Apps.** The dock shows a fixed list (`FAVORITAS` in [`Apps.kt`](inicio/app/src/main/java/dev/robertovillegas/inicio/Apps.kt)), then *All apps*, *Inputs* (HDMI, through TCL's own TV app) and *Settings*. Apps that aren't installed are skipped.
 
-**Si dice `unauthorized`**, la TV está mostrando un diálogo que pide autorizar esta computadora. Acéptalo con el control y marca *"Permitir siempre desde esta computadora"*.
+**Picture-frame mode.** After 45 s without a key press the dock slides away and only the photograph is left. The next key press brings the dock back without launching anything.
 
-**Si la depuración está apagada**: en la TV ve a Ajustes → Sistema → Acerca de y presiona **OK 7 veces** sobre *Compilación del SO de Google TV*. Luego ve a Ajustes → Sistema → **Opciones para desarrolladores** y activa **Depuración por USB**.
+Why not use Unsplash? It would work, but it needs a developer account and an API key, and Commons covers this use without either. Why not use [Projectivy](https://play.google.com/store/apps/details?id=com.spocky.projengmenu)? It's a great launcher, and the sister repo uses it. Here the point was a screen that looks exactly the way we want.
 
-**Si en macOS `adb` responde "No route to host"**, el problema es *Local Network Privacy* y no la TV. Ve a Ajustes del Sistema → Privacidad y seguridad → **Red local** y dale permiso a tu terminal.
+## Caring for the panel
 
----
-
-## Qué se cambió
-
-### 1. Declutter: 22 apps desactivadas (`fase1-desactivar.txt`)
-
-Método: `pm disable-user --user 0 <paquete>`. Una app desactivada sigue apareciendo en Ajustes → Apps y se puede reactivar desde ahí con el control, sin computadora.
-
-- **Apps instaladas sin uso:** Disney+, Max, Paramount+, Tubi, Twitch, PrendeTV, Downloader y `com.flix.tv`.
-- **Google:** Asistente y búsqueda por voz (`katniss`), YouTube Music, Play Juegos, Feedback y el protector de pantalla de Google (`dreamx`), que mostraba contenido promocionado.
-- **TCL:** canales con anuncios (`channelplus`), modo tienda (`esticker`, `exhibit`), Alexa, MagiConnect, mensajes y promociones (`messagebox`), manuales (`ocean.instructions`, `repairguide`) y el feed de contenido (`waterfall.overseas`).
-
-**Se dejó a propósito:** el sintonizador y la app de TV de TCL (`com.tcl.tv`), que también maneja las entradas HDMI, además de Chromecast (`mediashell`), AirPlay, Play Store y Ajustes.
-
-Las apps que se usan: YouTube, Netflix, Prime Video, Crunchyroll, Apple TV, Plex, FutureTV, Spotify y SmartTube.
-
-### 2. SmartTube para invitados
-
-[SmartTube](https://github.com/yuliskov/SmartTube) es un cliente de YouTube para TV, sin anuncios y sin cuenta. Se instala desde su GitHub oficial (variante `armeabi-v7a`) con `./instalar-smarttube.sh`, que también sirve para actualizarlo.
-
-### 3. Inicio: la app de pantalla de inicio (`inicio/`)
-
-Hay que reemplazar la pantalla de inicio porque el anuncio grande de arriba (el *hero*) es parte del inicio de Google TV y no tiene ajuste para quitarlo. Inicio es una app Android pequeña (70 KB, sin dependencias) que se registra como pantalla de inicio.
-
-- **Fondos:** fotos destacadas de naturaleza de [Wikimedia Commons](https://commons.wikimedia.org/) (montañas, lagos, bosques, playas, cascadas y costas). Son libres, no piden llave y se guardan hasta 40 en la TV, así que funciona sin internet. Se descartan por texto las que muestran trenes, pueblos o edificios. Cada foto lleva su lugar, sacado de sus coordenadas GPS con OpenStreetMap/Nominatim, su descripción y el crédito del autor con su licencia.
-- **Clima:** [Open-Meteo](https://open-meteo.com/), sin llave. La ciudad sale de la IP pública ([ipapi.co](https://ipapi.co/)).
-- **Dock:** las apps de arriba, más *Todas las apps*, *Entradas* (HDMI) y *Ajustes*. El orden está en `Apps.kt` → `FAVORITAS`.
-- **Modo cuadro:** si no tocas el control en 45 s, el dock se esconde y queda solo el paisaje. La primera tecla lo regresa sin abrir nada.
-
-### 4. Cuidado del panel
-
-| Ajuste | Antes | Ahora |
+| Setting | Factory | Now |
 |---|---|---|
-| Protector de pantalla | Google `dreamx` a los 10 min | **Paisajes** (de Inicio) a los **5 min** |
-| Apagar la pantalla | 19 min | **30 min** después de que arranca el protector |
-| Apagado por inactividad con video | nunca | **4 h** sin tocar el control |
+| Screensaver | Google's ambient mode (with promoted content) after 10 min | **Paisajes** (from Inicio) after **5 min** |
+| Screen off | ~19 min | ~19 min (unchanged) |
+| Power off with no remote input, even during video | never | **4 h** |
 
-El fondo nunca está quieto: cada foto se acerca y se desplaza despacio, y cambia cada 3 min en el inicio y cada 75 s en el protector. En el protector, la hora cambia de esquina cada 4 min. Así ningún pixel muestra lo mismo mucho tiempo.
+Nothing on screen stands still. Every photo slowly zooms and pans, a Ken Burns effect, and is replaced every 3 min on the home screen and every 75 s in the screensaver. In the screensaver, the clock also moves to a different corner every 4 min.
 
-**Trampa de TCL:** la TV bloquea que las apps de terceros arranquen servicios solas (`TclAppBoot: callee_does't_have_OP_AUTO_START_permission`). Sin el permiso `cmd appops set dev.robertovillegas.inicio APP_AUTO_START allow`, el protector se cierra al instante. `instalar-inicio.sh` ya lo concede.
+## Debloat
+
+The debloat uses `pm disable-user --user 0` and never uninstalls anything. A disabled app still appears under *Settings → Apps*, where anyone can turn it back on with the remote, no computer needed.
+
+- **Unused streaming apps:** Disney+, Max, Paramount+, Tubi, Twitch, PrendeTV, Downloader and an unidentified sideload (`com.flix.tv`).
+- **Google:** the Assistant and voice search (`katniss`), YouTube Music, Play Games, Feedback, and the ambient screensaver (`dreamx`).
+- **TCL:** ad-supported FAST channels (`channelplus`), store demo mode (`esticker`, `exhibit`), Alexa, MagiConnect, the promo inbox (`messagebox`), manuals, and the content feed (`waterfall.overseas`).
+
+Kept on purpose: TCL's TV app (it owns the HDMI inputs), Chromecast, AirPlay, Play Store and Settings.
+
+[SmartTube](https://github.com/yuliskov/SmartTube) is installed so guests can watch YouTube without anyone's account.
 
 ---
 
-## Scripts
+## Usage
 
-Desde la Mac, con `adb`:
-
-| Script | Qué hace |
-|---|---|
-| `aplicar.sh <lista>` | Desactiva los paquetes de una lista (`fase1-desactivar.txt` o `fase2-desactivar.txt`) |
-| `instalar-inicio.sh` | Compila e instala Inicio, la pone como protector y ajusta los tiempos de apagado |
-| `poner-inicio.sh` | Hace de Inicio la pantalla de inicio y desactiva la de Google TV (fase 2) |
-| `instalar-smarttube.sh` | Instala o actualiza SmartTube desde GitHub |
-| `rescate-launcher.sh` | **Emergencia:** la TV se quedó sin pantalla de inicio. Regresa la de Google TV y reinicia |
-| `restaurar-todo.sh` | Regresa todo a como venía de fábrica y reinicia |
-
-Dentro de la TV: `adb shell sh /sdcard/restaurar-tv.sh` hace lo mismo que `restaurar-todo.sh`.
-
-**Antes de reiniciar después de activar o desactivar apps, espera ~15 s.** Si reinicias de inmediato, PackageManager no alcanza a guardar los cambios y se revierten.
-
-## Compilar Inicio
-
-Necesitas JDK 21 y el SDK de Android (`brew install --cask android-commandlinetools`, luego `sdkmanager "platforms;android-35"`).
+Connect first:
 
 ```bash
-cd inicio
-./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk
+brew install --cask android-platform-tools
+adb connect 192.168.0.122:5555      # or set TV=<ip>:5555 for any script below
 ```
 
-Se firma con la llave de debug local: es una app para esta TV y no se publica en Play Store.
+If the IP changed, the TV announces itself over mDNS:
 
-## Respaldo
+```bash
+adb mdns services                   # look for _adb._tcp  <ip>:5555
+```
 
-`respaldo-original/` tiene el estado del 28 de octubre de 2026, antes de cualquier cambio: paquetes activos, de sistema y de terceros, y la pantalla de inicio por defecto. Los volcados crudos (`getprop`, `settings`, actividades preferidas) se quedan solo en la Mac porque traen seriales del equipo; están en `.gitignore`.
+Then:
 
-**Un reset de fábrica** borra `/sdcard/restaurar-tv.sh` y deja la TV como nueva, con anuncios incluidos. Para volver a dejarla así, corre `aplicar.sh fase1-desactivar.txt`, `instalar-smarttube.sh`, `instalar-inicio.sh` y `poner-inicio.sh`.
+```bash
+./aplicar.sh fase1-desactivar.txt   # debloat
+./instalar-smarttube.sh             # SmartTube for guests
+./instalar-inicio.sh                # build + install Inicio, screensaver, timers
+./poner-inicio.sh                   # make Inicio the home screen
+```
+
+To undo:
+
+```bash
+./rescate-launcher.sh               # home screen broken? back to Google TV
+./restaurar-todo.sh                 # undo everything
+```
+
+To build Inicio by hand, you need JDK 21 and the Android SDK (`brew install --cask android-commandlinetools`, then `sdkmanager "platforms;android-35"`):
+
+```bash
+cd inicio && ./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk
+```
+
+The release build is signed with the local debug key. It's meant to be sideloaded over ADB, not published.
+
+---
+
+## Gotchas
+
+- **TCL blocks third-party services from starting on their own.** The log reads `TclAppBoot: callee_does't_have_OP_AUTO_START_permission`, and a custom screensaver closes the instant it opens. The fix is `cmd appops set <package> APP_AUTO_START allow`; `instalar-inicio.sh` runs it.
+- **Wait about 15 s after enabling or disabling packages before you reboot.** If you reboot sooner, PackageManager may not have saved the change, and it gets reverted.
+- **If you see `unauthorized` in `adb devices`,** accept the prompt on the TV and tick *Always allow from this computer*.
+- **If macOS says "No route to host" for every LAN device,** that's Local Network Privacy, not your router. Grant your terminal access under *System Settings → Privacy & Security → Local Network*.
+- **To enable ADB,** go to *Settings → System → About* and press OK seven times on *Google TV OS build*. Then go to *Settings → System → Developer options* and turn on *USB debugging*.
+- **A factory reset removes all of this,** including `/sdcard/restaurar-tv.sh`. Run the four commands under *Usage* again to restore it.
+
+## Adapting it to your TV
+
+The idea works on any Android TV or Google TV, because Android lets an app register as the home screen. To adapt it:
+
+1. Check your ABI with `adb shell getprop ro.product.cpu.abi`.
+2. Edit `FAVORITAS` and `OCULTAS` in `Apps.kt`.
+3. Point `Apps.entradas()` at your vendor's TV app. Find it with `adb shell cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER`.
+4. Change the package lists before running `aplicar.sh`. List your own packages first; the ones here are TCL-specific.
+
+## Credits
+
+- Photographs: the individual authors on [Wikimedia Commons](https://commons.wikimedia.org/), credited on screen under their own licenses (mostly CC BY-SA).
+- Map data: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+- Weather: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0).
+
+The code is MIT licensed (see [LICENSE](LICENSE)).

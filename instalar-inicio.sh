@@ -14,7 +14,7 @@ settings put secure screensaver_enabled 1
 settings put secure screensaver_components dev.robertovillegas.inicio/.PaisajesDream
 settings put secure screensaver_default_component dev.robertovillegas.inicio/.PaisajesDream
 settings put system screen_off_timeout 300000     # protector a los 5 min sin usar el control
-settings put secure sleep_timeout 1800000         # se apaga 30 min despues
+settings put secure sleep_timeout 1139000         # pantalla apagada a los ~19 min, como venia de fabrica
 settings put secure attentive_timeout 14400000    # apagado tras 4 h sin tocar el control, aunque haya video
 '
 echo "Inicio instalado y configurado como protector de pantalla."
