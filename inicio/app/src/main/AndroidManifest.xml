@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Para instalar versiones nuevas desde GitHub (ver Actualizacion.kt). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Se concede por ADB (instalar-inicio.sh) para apagar la TV antes de noche. -->
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
@@ -62,6 +64,10 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".Actualizacion$Resultado"
+            android:exported="false" />
 
         <service
             android:name=".PaisajesDream"

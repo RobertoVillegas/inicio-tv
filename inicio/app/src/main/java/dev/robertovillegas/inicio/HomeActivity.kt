@@ -18,6 +18,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import java.util.concurrent.Executors
 
 class HomeActivity : Activity() {
@@ -57,7 +58,11 @@ class HomeActivity : Activity() {
     }
     private val refrescarFondos = object : Runnable {
         override fun run() {
-            trabajo.execute { Fondos.refrescar(this@HomeActivity) }
+            trabajo.execute {
+                Fondos.refrescar(this@HomeActivity)
+                Actualizacion.revisar(this@HomeActivity)
+                principal.post { avisarActualizacion() }
+            }
             principal.postDelayed(this, 6 * 3600_000L)
         }
     }
@@ -127,12 +132,14 @@ class HomeActivity : Activity() {
 
     private fun opcionesFoto() {
         val foto = escena.actual ?: return
-        val opciones = arrayOf(
+        val nueva = Actualizacion.disponible
+        val opciones = listOfNotNull(
             if (favoritaActual) "♥  Quitar de guardadas" else "♡  Guardar esta foto",
             "↻  Otra foto",
             "✕  No volver a mostrar",
+            nueva?.let { "↑  Actualizar Inicio a ${it.nombre}" },
             "Cancelar",
-        )
+        ).toTypedArray()
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(foto.lugar.ifEmpty { "Esta foto" })
             .setItems(opciones) { _, i ->
@@ -140,9 +147,26 @@ class HomeActivity : Activity() {
                     0 -> alternarFavorita(foto)
                     1 -> escena.otra()
                     2 -> ocultarFoto()
+                    3 -> nueva?.let { actualizar(it) }
                 }
             }
             .show()
+    }
+
+    // Con versión nueva el botón dice "↑ •••", para que se note sin abrir el menú.
+    private fun avisarActualizacion() {
+        menuFoto.text = if (Actualizacion.disponible != null) "↑  •••" else "•••"
+    }
+
+    private fun actualizar(v: Actualizacion.Version) {
+        Toast.makeText(this, "Descargando Inicio ${v.nombre}…", Toast.LENGTH_LONG).show()
+        trabajo.execute {
+            try {
+                Actualizacion.instalar(this, v)
+            } catch (e: Exception) {
+                principal.post { Toast.makeText(this, "No se pudo actualizar: ${e.message}", Toast.LENGTH_LONG).show() }
+            }
+        }
     }
 
     private fun alternarFavorita(foto: Foto) {

@@ -14,6 +14,8 @@ cmd appops set dev.robertovillegas.inicio APP_AUTO_START allow
 cmd notification allow_listener dev.robertovillegas.inicio/dev.robertovillegas.inicio.Escucha
 # Cambiar el apagado: 10 min de noche, ~19 min de dia.
 pm grant dev.robertovillegas.inicio android.permission.WRITE_SECURE_SETTINGS
+# Instalar sus propias versiones nuevas desde GitHub (la TV pide confirmar con el control).
+cmd appops set dev.robertovillegas.inicio REQUEST_INSTALL_PACKAGES allow
 settings put secure screensaver_enabled 1
 settings put secure screensaver_components dev.robertovillegas.inicio/.PaisajesDream
 settings put secure screensaver_default_component dev.robertovillegas.inicio/.PaisajesDream

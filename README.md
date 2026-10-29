@@ -72,6 +72,8 @@ File and script names are in Spanish; the table above is the translation.
 
 **Picture-frame mode.** After 45 s without a key press the dock slides away and only the photograph is left. The next key press brings the dock back without launching anything.
 
+**Updates.** Every few hours Inicio checks the latest GitHub release. When there's a newer one, the button at the top right reads `↑ •••` and its menu offers to update. Inicio downloads the APK and Android asks you to confirm with the remote. Apps can't update themselves silently on Android without root. The home-screen role and the permissions carry over to the new version.
+
 Why not use Unsplash? It would work, but it needs a developer account and an API key, and Commons covers this use without either. Why not use [Projectivy](https://play.google.com/store/apps/details?id=com.spocky.projengmenu)? It's a great launcher, and the sister repo uses it. Here the point was a screen that looks exactly the way we want.
 
 **Memory.** Measured on this TV with the same method for both: reboot, wait until things settle, then five `dumpsys meminfo` samples 30 s apart. The Google TV numbers were taken with the debloat already in place.
