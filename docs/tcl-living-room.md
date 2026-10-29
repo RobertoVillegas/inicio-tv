@@ -11,7 +11,7 @@ Inicio was built for this TV. This page is the full record of how it's set up: t
 | SoC | Realtek RTD2875P (`rtd6748`) |
 | RAM / storage | 2 GB / 8 GB (1.8 GB and 7.9 GB usable) |
 | ABI | **`armeabi-v7a` only (32-bit).** Apps with native code need their `armeabi-v7a` build, never `arm64-v8a` |
-| UI resolution | **1920×1080.** Only video plays at 4K, so wallpapers bigger than 1920 px just waste memory |
+| UI resolution | **1920×1080** on a 3840×2160 panel (`wm size` override), so anything Inicio draws is upscaled 2× by the TV. Downloading photos at 2208 px instead of 1920 measured no sharper. Only a SurfaceView, the way video players do it, could show photos at full 4K |
 
 ## Memory
 
@@ -26,14 +26,16 @@ That's about two thirds less, on a TV with 1.8 GB of usable RAM. Inicio 0.5.0 se
 
 When another app is in front and Android runs low on memory, Inicio drops its two background photos (about 10 MB of native heap; PSS goes from 41.7 to 36.8 MB with YouTube in front) and loads a fresh one on the way back. It never sees `TRIM_MEMORY_BACKGROUND`, though: the system keeps its notification listener bound, which makes it a foreground process, so it reacts to the `RUNNING_LOW` and `RUNNING_CRITICAL` levels instead.
 
-`./measure.sh` repeats all of this and adds smoothness and CPU. On 0.5.0:
+`./measure.sh` repeats all of this and adds smoothness and CPU. On 0.5.1:
 
 | | |
 |---|---|
-| Home after the process was killed | 369 ms (a true cold start never happens: Android revives the process within two seconds to reconnect the listener) |
-| Dock, 24 key presses | 1 janky frame of 798 |
+| Home after the process was killed | about 370 ms (a true cold start never happens: Android revives the process within two seconds to reconnect the listener) |
+| Dock, 24 key presses | 0.6–1.5 % janky frames, median frame 13 ms |
 | Idle memory | 45 MB PSS |
-| Idle CPU | 17 % of one core, almost all of it the never-ending photo zoom, which redraws every frame |
+| Idle CPU | 2 % of one core |
+
+The photo's slow zoom moves it by under 1 px a second. Up to 0.5.0 it was animated at 60 fps, which cost about 36 % of a core between Inicio's RenderThread (11 %) and SurfaceFlinger (22 %). Since 0.5.1 it steps four times a second and the same idle screen costs about 3 %. The photo still sits in a hardware layer: drawing it directly measured 5 % sharper but made the dock janky (30 % of frames), because every dock animation then repainted the full-screen photo.
 
 ## Caring for the panel
 

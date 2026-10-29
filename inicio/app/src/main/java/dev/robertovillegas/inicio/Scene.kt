@@ -9,12 +9,12 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
-import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -42,6 +42,21 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
     private var interval = 180_000L
     private var running = false
     private var night = false
+
+    // The drift moves a photo by about 1 px a second. Animated at 60 fps it cost a third of a core
+    // (SurfaceFlinger plus Inicio's RenderThread) for motion nobody could see, so it steps a few times a second.
+    private class Drift(val view: View, val from: FloatArray, val to: FloatArray, val startedAt: Long, val duration: Long)
+    private var drift: Drift? = null
+    private val driftStep = object : Runnable {
+        override fun run() {
+            val d = drift ?: return
+            val t = ((SystemClock.uptimeMillis() - d.startedAt).toFloat() / d.duration).coerceIn(0f, 1f)
+            fun at(i: Int) = d.from[i] + (d.to[i] - d.from[i]) * t
+            d.view.scaleX = at(0); d.view.scaleY = at(0)
+            d.view.translationX = at(1); d.view.translationY = at(2)
+            if (t < 1f) main.postDelayed(this, DRIFT_STEP_MS)
+        }
+    }
 
     var current: Photo? = null
         private set
@@ -157,6 +172,7 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
     private fun layer() = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
         alpha = 0f
+        // Caches the photo, night filter included, so the dock's animations don't repaint it every frame.
         setLayerType(LAYER_TYPE_HARDWARE, null)
     }
 
@@ -248,21 +264,16 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
         entering.colorFilter = if (night) NIGHT_FILTER else null
 
         // Starts slightly zoomed in and drifts toward a random corner for its whole life.
-        val drift = dp(24).toFloat()
-        entering.scaleX = 1.06f; entering.scaleY = 1.06f
-        entering.translationX = Random.nextFloat() * 2 * drift - drift
-        entering.translationY = Random.nextFloat() * 2 * drift - drift
+        val range = dp(24).toFloat()
+        fun offset() = Random.nextFloat() * 2 * range - range
+        drift = Drift(entering, floatArrayOf(1.06f, offset(), offset()), floatArrayOf(1.14f, offset(), offset()),
+            SystemClock.uptimeMillis(), interval + 3000)
+        main.removeCallbacks(driftStep)
+        driftStep.run()
         entering.alpha = 0f
         entering.animate().alpha(1f).setDuration(2500).withEndAction {
             if (leaving.alpha == 0f) leaving.setImageDrawable(null)
         }.start()
-        entering.animate()
-            .scaleX(1.14f).scaleY(1.14f)
-            .translationX(Random.nextFloat() * 2 * drift - drift)
-            .translationY(Random.nextFloat() * 2 * drift - drift)
-            .setInterpolator(LinearInterpolator())
-            .setDuration(interval + 3000)
-            .start()
         leaving.animate().alpha(0f).setDuration(2500).withEndAction { leaving.setImageDrawable(null) }.start()
 
         current = photo
@@ -319,6 +330,8 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
     }
 
     private companion object {
+        const val DRIFT_STEP_MS = 250L
+
         // 55 % brightness, with blue a little lower so the light feels warm.
         val NIGHT_FILTER = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
             0.58f, 0f, 0f, 0f, 0f,

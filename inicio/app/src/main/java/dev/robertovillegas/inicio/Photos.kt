@@ -372,7 +372,10 @@ object Photos {
         val (valid, rejected) = all.partition { o ->
             o.optBoolean("own") || NOT_NATURE.none { it in o.optString("description").lowercase() }
         }
-        val (kept, regular) = valid.partition { it.optBoolean("favorite") || it.optBoolean("own") }
+        val pinned = pinned(ctx)
+        val (kept, regular) = valid.partition {
+            it.optBoolean("favorite") || it.optBoolean("own") || it.getString("file") == pinned
+        }
         val excess = (valid.size - MAX_KEPT).coerceAtLeast(0).coerceAtMost(regular.size)
         val remaining = JSONArray()
         (rejected + regular.take(excess)).forEach { File(dir(ctx), it.getString("file")).delete() }
