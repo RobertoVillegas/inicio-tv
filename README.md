@@ -4,21 +4,25 @@
 
 Google TV's home screen opens on a full-width ad with a row of sponsored picks under it, and there's no setting to switch them off. Inicio replaces it with a slowly drifting landscape, the time, the weather, where the photo was taken, and only the apps you actually use. It doubles as the screensaver, and it's built so the panel never sits on a still image.
 
-| Before: stock Google TV | After: Inicio |
-|---|---|
-| ![Google TV home with a full-screen promo and sponsored rows](docs/google-tv-before.jpg) | ![Inicio home: misty Estonian bog, clock, weather and an app dock](docs/inicio-home.jpg) |
-
-| Screensaver, with what's playing | The dock's HDMI tiles |
-|---|---|
-| ![The Paisajes screensaver on an Andaman beach, showing the Spotify song above the clock](docs/screensaver-now-playing.jpg) | ![The end of the dock: Spotify, SmartTube, All apps and three HDMI tiles](docs/dock-hdmi.jpg) |
-
-| Your own photo, with where and when it was taken | Adding photos from a phone |
-|---|---|
-| ![Inicio showing a phone photo of mountains at sunset, credited "Victoria, Tamaulipas, México" and its date](docs/mis-fotos-inicio.jpg) | ![The add-photos screen: a QR code and three steps](docs/subir-fotos.jpg) |
-
-| The gallery: what shows on screen, photo by photo | The `•••` menu |
-|---|---|
-| ![The Mis fotos gallery with the three display modes and six photos](docs/galeria.jpg) | ![The photo menu: save, next photo, pin, never show again, my photos](docs/menu-foto.jpg) |
+<!-- One table so every screenshot gets the same width. -->
+<table>
+<tr>
+<td width="50%" valign="top"><b>Before: stock Google TV</b><br><img src="docs/google-tv-before.jpg" alt="Google TV home with a full-screen promo and sponsored rows"></td>
+<td width="50%" valign="top"><b>After: Inicio</b><br><img src="docs/inicio-home.jpg" alt="Inicio home: misty Estonian bog, clock, weather and an app dock"></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Screensaver, with what's playing</b><br><img src="docs/screensaver-now-playing.jpg" alt="The Paisajes screensaver on an Andaman beach, showing the Spotify song above the clock"></td>
+<td width="50%" valign="top"><b>The dock's HDMI tiles</b><br><img src="docs/dock-hdmi.jpg" alt="The end of the dock: Spotify, SmartTube, All apps and three HDMI tiles"></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Your own photo, with where and when it was taken</b><br><img src="docs/mis-fotos-inicio.jpg" alt="Inicio showing a phone photo of mountains at sunset, credited Victoria, Tamaulipas, México and its date"></td>
+<td width="50%" valign="top"><b>Adding photos from a phone</b><br><img src="docs/subir-fotos.jpg" alt="The add-photos screen: a QR code and three steps"></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>The gallery: what shows on screen, photo by photo</b><br><img src="docs/galeria.jpg" alt="The Mis fotos gallery with the three display modes and six photos"></td>
+<td width="50%" valign="top"><b>The <code>•••</code> menu</b><br><img src="docs/menu-foto.jpg" alt="The photo menu: save, next photo, pin, never show again, my photos"></td>
+</tr>
+</table>
 
 *The interface is in Spanish because it was made for a Mexican household.*
 
