@@ -20,8 +20,8 @@ android {
         applicationId = "dev.robertovillegas.inicio"
         minSdk = 28
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.4.1"
+        versionCode = 6
+        versionName = "0.5.0"
     }
 
     signingConfigs {
