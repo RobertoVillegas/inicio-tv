@@ -215,6 +215,9 @@ object Fondos {
         val gps = FloatArray(2)
         @Suppress("DEPRECATION")
         val lugar = if (exif?.getLatLong(gps) == true) lugarDe(gps[0].toDouble(), gps[1].toDouble()) else ""
+        // Algunos celulares quitan la ubicación al subir desde el navegador; queda en el log para saberlo.
+        Log.i(TAG, "Subida: ${w}x$h, cámara=${exif?.getAttribute(ExifInterface.TAG_MAKE)}, " +
+            "fecha=${exif?.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)}, gps=${gps.toList()}, lugar=$lugar")
         val tomada = exif?.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)?.let {
             try {
                 LocalDateTime.parse(it, DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss"))

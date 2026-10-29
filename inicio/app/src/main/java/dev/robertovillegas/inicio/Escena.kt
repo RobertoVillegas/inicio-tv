@@ -148,8 +148,9 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
         info.addView(fecha)
         info.addView(clima, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
         info.addView(pronostico, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
-        credito.addView(lugar)
-        credito.addView(descripcion)
+        // Cada línea con su propio ancho: si heredaran el del autor, sin autor (las fotos propias) no se verían.
+        credito.addView(lugar, LinearLayout.LayoutParams(-2, -2))
+        credito.addView(descripcion, LinearLayout.LayoutParams(-2, -2))
         credito.addView(autor, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
         addView(info, LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
         addView(credito, LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
@@ -268,6 +269,7 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
         descripcion.visibility = if (foto.descripcion.isEmpty()) GONE else VISIBLE
         autor.text = listOf(foto.autor, foto.licencia).filter { it.isNotEmpty() }
             .joinToString(" · ").let { if (it.isEmpty()) "" else "Foto: $it · Wikimedia Commons" }
+        autor.visibility = if (autor.text.isEmpty()) GONE else VISIBLE
         alCambiarFoto?.invoke(foto)
     }
 

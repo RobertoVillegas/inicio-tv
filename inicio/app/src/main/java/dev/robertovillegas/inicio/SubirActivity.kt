@@ -129,6 +129,7 @@ class SubirActivity : Activity() {
         when {
             metodo == "GET" && ruta == "/$clave" -> enviar("200 OK", "text/html; charset=utf-8", PAGINA.toByteArray())
             metodo == "POST" && ruta == "/$clave/subir" && largo in 1..MAXIMO -> {
+                Log.i(TAG, "Subida de $largo bytes, " + Regex("(?im)^(content-type|user-agent):.*$").findAll(cabecera).joinToString(" | ") { it.value.trim() })
                 val tmp = File(cacheDir, "subida.tmp")
                 tmp.outputStream().use { copiar(entrada, it, largo) }
                 val bien = try { Fondos.importar(this, tmp) } catch (e: Exception) { Log.w(TAG, "No se pudo importar", e); false }
