@@ -4,9 +4,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Para instalar versiones nuevas desde GitHub (ver Actualizacion.kt). -->
+    <!-- Installs new versions from GitHub (Updater.kt). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Se concede por ADB (instalar-inicio.sh) para apagar la TV antes de noche. -->
+    <!-- Granted over ADB by install-inicio.sh, to turn the TV off sooner at night. -->
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
@@ -19,7 +19,7 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
         </intent>
-        <!-- Para saber si la pantalla de inicio sigue siendo Inicio (ver Guardia.kt). -->
+        <!-- Lets HomeGuard see which app answers Home. -->
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
@@ -60,20 +60,20 @@
             android:screenOrientation="landscape" />
 
         <activity
-            android:name=".GaleriaActivity"
+            android:name=".GalleryActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:screenOrientation="landscape" />
 
         <activity
-            android:name=".SubirActivity"
+            android:name=".UploadActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:screenOrientation="landscape" />
 
-        <!-- Solo existe para poder leer qué música está sonando (ver Sonando.kt). -->
+        <!-- Only there to read what's playing (NowPlaying.kt). -->
         <service
-            android:name=".Escucha"
+            android:name=".MediaListener"
             android:exported="true"
             android:label="Inicio"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -83,11 +83,11 @@
         </service>
 
         <receiver
-            android:name=".Actualizacion$Resultado"
+            android:name=".Updater$Result"
             android:exported="false" />
 
         <service
-            android:name=".PaisajesDream"
+            android:name=".LandscapesDream"
             android:exported="true"
             android:label="Paisajes"
             android:permission="android.permission.BIND_DREAM_SERVICE">

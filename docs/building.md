@@ -6,7 +6,7 @@ You need JDK 21 and the Android SDK (`brew install --cask android-commandlinetoo
 
 ```bash
 cd inicio && ./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk
-COMPILAR=1 ./instalar-inicio.sh <tv-ip>    # build, install and set up in one go
+BUILD=1 ./install-inicio.sh <tv-ip>        # build, install and set up in one go
 ```
 
 The app is plain Kotlin with no dependencies and no native code, about 150 KB.
@@ -23,7 +23,7 @@ Push a signed tag such as `v0.5.0` and [`release.yml`](../.github/workflows/rele
 https://github.com/RobertoVillegas/inicio-tv/releases/latest/download/inicio.apk
 ```
 
-That link is what the Downloader codes and `instalar-inicio.sh` use, and Inicio itself checks the latest release to offer updates. Bump `versionCode` and `versionName` in `inicio/app/build.gradle.kts` before tagging, or installed copies won't see the new version as newer. Re-pushing an existing tag replaces its APK instead of failing.
+That link is what the Downloader codes and `install-inicio.sh` use, and Inicio itself checks the latest release to offer updates. Bump `versionCode` and `versionName` in `inicio/app/build.gradle.kts` before tagging, or installed copies won't see the new version as newer. Re-pushing an existing tag replaces its APK instead of failing.
 
 The workflow needs three repository secrets: `INICIO_KEYSTORE_B64` (the keystore in base64), `INICIO_STORE_PASSWORD` and `INICIO_KEY_PASSWORD`.
 

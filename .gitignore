@@ -1,5 +1,5 @@
-# Volcados crudos: traen seriales e identificadores del equipo. Se quedan solo en la Mac.
-respaldo-original/getprop.txt
-respaldo-original/settings-*.txt
-respaldo-original/preferred-activities.txt
-respaldo-original/paquetes-todos-con-ruta.txt
+# Raw dumps carry the TV's serials and device identifiers. They stay on the Mac.
+factory-backup/getprop.txt
+factory-backup/settings-*.txt
+factory-backup/preferred-activities.txt
+factory-backup/packages-all-with-paths.txt

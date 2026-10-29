@@ -4,10 +4,10 @@ plugins {
     id("com.android.application")
 }
 
-// La llave de release vive fuera del repo. En la Mac: ~/.android/inicio-release.properties;
-// en GitHub Actions el workflow la escribe desde los secrets y apunta INICIO_FIRMA a ella.
-// Sin ese archivo (por ejemplo en un fork), se firma con la llave de debug.
-val firma = (System.getenv("INICIO_FIRMA") ?: "${System.getProperty("user.home")}/.android/inicio-release.properties")
+// The release key lives outside the repo: ~/.android/inicio-release.properties on the Mac; in GitHub
+// Actions the workflow writes it from secrets and points INICIO_SIGNING at it. Without it (a fork, say),
+// the build is signed with the debug key.
+val signing = (System.getenv("INICIO_SIGNING") ?: "${System.getProperty("user.home")}/.android/inicio-release.properties")
     .let { file(it) }
     .takeIf { it.exists() }
     ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
@@ -25,12 +25,12 @@ android {
     }
 
     signingConfigs {
-        if (firma != null) {
+        if (signing != null) {
             create("release") {
-                storeFile = file(firma.getProperty("storeFile"))
-                storePassword = firma.getProperty("storePassword")
-                keyAlias = firma.getProperty("keyAlias")
-                keyPassword = firma.getProperty("keyPassword")
+                storeFile = file(signing.getProperty("storeFile"))
+                storePassword = signing.getProperty("storePassword")
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = signing.getProperty("keyPassword")
             }
         }
     }

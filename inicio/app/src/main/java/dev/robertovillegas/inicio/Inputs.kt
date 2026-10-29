@@ -19,14 +19,14 @@ import android.os.Handler
 import android.os.Looper
 
 /**
- * Accesos directos a cada entrada HDMI con algo encendido. El nombre es el que se le ponga en
- * Ajustes > Entradas de la TV (por ejemplo "Xbox"); si no tiene, queda "HDMI 1", "HDMI 2"...
+ * Dock tiles for the HDMI inputs with something switched on, named as in the TV's Settings > Inputs
+ * ("Xbox"), or "HDMI 1", "HDMI 2"... when unnamed.
  *
- * Solo cuentan las que Android reporta conectadas. Esta TCL reporta "en espera"
- * (INPUT_STATE_CONNECTED_STANDBY) también en un puerto sin nada, o con un cable suelto, así que
- * esas se esconden igual que las desconectadas. Sin ninguna, el dock muestra un solo acceso a Entradas.
+ * Only inputs that Android reports as connected count. This TCL reports CONNECTED_STANDBY for an empty
+ * port too, or one with a loose cable, so those hide like disconnected ones. With none left, the dock
+ * shows a single Inputs tile instead.
  */
-object Entradas {
+object Inputs {
     fun hdmi(ctx: Context): List<App> {
         val tim = ctx.getSystemService(TvInputManager::class.java) ?: return emptyList()
         return tim.tvInputList
@@ -35,35 +35,33 @@ object Entradas {
             .mapIndexed { i, info -> i to info }
             .filter { (_, info) -> tim.getInputState(info.id) == TvInputManager.INPUT_STATE_CONNECTED }
             .map { (i, info) ->
-                val nombre = info.loadCustomLabel(ctx)?.toString()?.takeIf { it.isNotBlank() }
-                    ?: "HDMI ${i + 1}"
-                App(nombre, tarjeta(ctx, nombre), abrir(info.id))
+                val name = info.loadCustomLabel(ctx)?.toString()?.takeIf { it.isNotBlank() } ?: "HDMI ${i + 1}"
+                App(name, tile(ctx, name), open(info.id))
             }
     }
 
-    /** Avisa cuando se conecta o desconecta algo, para redibujar el dock. */
-    fun seguir(ctx: Context, alCambiar: () -> Unit): TvInputManager.TvInputCallback? {
+    fun watch(ctx: Context, onChange: () -> Unit): TvInputManager.TvInputCallback? {
         val tim = ctx.getSystemService(TvInputManager::class.java) ?: return null
         val callback = object : TvInputManager.TvInputCallback() {
-            override fun onInputStateChanged(inputId: String, state: Int) = alCambiar()
-            override fun onInputAdded(inputId: String) = alCambiar()
-            override fun onInputRemoved(inputId: String) = alCambiar()
+            override fun onInputStateChanged(inputId: String, state: Int) = onChange()
+            override fun onInputAdded(inputId: String) = onChange()
+            override fun onInputRemoved(inputId: String) = onChange()
         }
         tim.registerCallback(callback, Handler(Looper.getMainLooper()))
         return callback
     }
 
-    fun dejarDeSeguir(ctx: Context, callback: TvInputManager.TvInputCallback?) {
+    fun unwatch(ctx: Context, callback: TvInputManager.TvInputCallback?) {
         callback ?: return
         ctx.getSystemService(TvInputManager::class.java)?.unregisterCallback(callback)
     }
 
-    private fun abrir(id: String) = Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(id))
+    // TCL's TV app owns the HDMI inputs.
+    private fun open(id: String) = Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(id))
         .setComponent(ComponentName("com.tcl.tv", "com.tcl.player.TVActivity"))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    // Una tarjeta dibujada a mano: degradado oscuro con el nombre de la entrada.
-    private fun tarjeta(ctx: Context, nombre: String): Drawable {
+    private fun tile(ctx: Context, name: String): Drawable {
         val d = ctx.resources.displayMetrics.density
         val w = (160 * d).toInt()
         val h = (90 * d).toInt()
@@ -72,21 +70,21 @@ object Entradas {
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), Paint().apply {
             shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(), 0xFF2B3440.toInt(), 0xFF141A21.toInt(), Shader.TileMode.CLAMP)
         })
-        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val title = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             textSize = 22 * d
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             textAlign = Paint.Align.CENTER
         }
-        while (p.measureText(nombre) > w - 24 * d && p.textSize > 12 * d) p.textSize -= d
-        c.drawText(nombre, w / 2f, h / 2f - (p.descent() + p.ascent()) / 2, p)
-        val sub = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        while (title.measureText(name) > w - 24 * d && title.textSize > 12 * d) title.textSize -= d
+        c.drawText(name, w / 2f, h / 2f - (title.descent() + title.ascent()) / 2, title)
+        val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x99FFFFFF.toInt()
             textSize = 10 * d
             textAlign = Paint.Align.CENTER
             letterSpacing = 0.15f
         }
-        c.drawText("ENTRADA", w / 2f, h - 14 * d, sub)
+        c.drawText("ENTRADA", w / 2f, h - 14 * d, caption)
         return BitmapDrawable(ctx.resources, bmp)
     }
 }

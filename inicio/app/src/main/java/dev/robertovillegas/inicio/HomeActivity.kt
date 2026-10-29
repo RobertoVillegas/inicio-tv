@@ -16,6 +16,7 @@ import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -24,79 +25,78 @@ import android.widget.Toast
 import java.util.concurrent.Executors
 
 class HomeActivity : Activity() {
-    private lateinit var escena: Escena
+    private lateinit var scene: Scene
     private lateinit var dock: HorizontalScrollView
-    private lateinit var fila: LinearLayout
-    private val resorteDock = Resorte { dock.scrollTo(it.toInt(), 0) }
-    private lateinit var menuFoto: TextView
-    private var favoritaActual = false
-    private lateinit var sonando: Sonando
-    private val principal = Handler(Looper.getMainLooper())
-    private val trabajo = Executors.newSingleThreadExecutor()
-    private var modoCuadro = false
-    private var versionDock = -1
-    private var enPantalla = false
-    private var entradas: TvInputManager.TvInputCallback? = null
+    private lateinit var row: LinearLayout
+    private val dockSpring = Spring { dock.scrollTo(it.toInt(), 0) }
+    private lateinit var photoMenu: TextView
+    private var currentIsFavorite = false
+    private lateinit var nowPlaying: NowPlaying
+    private val main = Handler(Looper.getMainLooper())
+    private val worker = Executors.newSingleThreadExecutor()
+    private var frameMode = false
+    private var dockVersion = -1
+    private var onScreen = false
+    private var inputsCallback: TvInputManager.TvInputCallback? = null
 
-    // Mientras se mueve una app dentro del dock: cuál es y en qué posición va.
-    private var moviendo: Tarjeta? = null
+    // The tile being moved within the dock.
+    private var moving: Tile? = null
 
-    // La tecla que termina de mover se suelta después; ese "soltar" no debe abrir la app.
-    private var tragarSoltar = false
+    // The key that ends a move is released afterwards; that release must not open the app.
+    private var swallowKeyUp = false
 
-    // Sin tocar el control, el dock se esconde y queda solo el paisaje.
-    private val ocultarDock = Runnable { entrarModoCuadro() }
-    private val actualizarClima = object : Runnable {
+    // With no remote input, the dock hides and only the landscape is left.
+    private val hideDock = Runnable { enterFrameMode() }
+    private val refreshWeather = object : Runnable {
         override fun run() {
-            trabajo.execute {
-                val c = ClimaLocal.obtener(this@HomeActivity)
-                principal.post { escena.ponerClima(c); revisarNoche() }
+            worker.execute {
+                val w = LocalWeather.fetch(this@HomeActivity)
+                main.post { scene.setWeather(w); checkNight() }
             }
-            principal.postDelayed(this, 30 * 60_000L)
+            main.postDelayed(this, 30 * 60_000L)
         }
     }
-    private val cadaMinuto = object : Runnable {
+    private val everyMinute = object : Runnable {
         override fun run() {
-            revisarNoche()
-            principal.postDelayed(this, 60_000L)
+            checkNight()
+            main.postDelayed(this, 60_000L)
         }
     }
-    private val refrescarFondos = object : Runnable {
+    private val refreshPhotos = object : Runnable {
         override fun run() {
-            trabajo.execute {
-                Fondos.refrescar(this@HomeActivity)
-                Actualizacion.revisar(this@HomeActivity)
-                principal.post { avisarActualizacion() }
+            worker.execute {
+                Photos.refresh(this@HomeActivity)
+                Updater.check(this@HomeActivity)
+                main.post { showUpdateBadge() }
             }
-            principal.postDelayed(this, 6 * 3600_000L)
+            main.postDelayed(this, 6 * 3600_000L)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        escena = Escena(this)
-        val raiz = FrameLayout(this)
-        raiz.addView(escena, FrameLayout.LayoutParams(-1, -1))
+        scene = Scene(this)
+        val root = FrameLayout(this)
+        root.addView(scene, FrameLayout.LayoutParams(-1, -1))
 
-        fila = LinearLayout(this).apply {
+        row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             clipChildren = false
             clipToPadding = false
-            setPadding(escena.dp(40), escena.dp(14), escena.dp(40), escena.dp(44))
+            setPadding(scene.dp(40), scene.dp(14), scene.dp(40), scene.dp(44))
         }
-        // Al enfocar una tarjeta el dock deja aire a los lados. En la primera y la última eso
-        // alcanza la orilla, así que se ve completa (con su margen) sin otro clic hacia el borde.
-        // El desplazamiento lo hace el resorte, no el scroll de Android, que dura siempre lo mismo
-        // y se corta al presionar seguido.
-        val aire = escena.dp(40)
+        // A focused tile keeps some air on both sides, so the first and last show whole, margin included,
+        // without another press toward the edge. The spring does the scrolling: Android's own scroll always
+        // takes the same time and cuts off on repeated presses.
+        val air = scene.dp(40)
         dock = object : HorizontalScrollView(this) {
             override fun computeScrollDeltaToGetChildRectOnScreen(rect: Rect): Int {
                 val total = getChildAt(0)?.width ?: return 0
-                var destino = resorteDock.destino.toInt()
-                if (rect.left - aire < destino) destino = rect.left - aire
-                if (rect.right + aire > destino + width) destino = rect.right + aire - width
-                destino = destino.coerceIn(0, maxOf(0, total - width))
-                if (destino != resorteDock.destino.toInt()) resorteDock.ir(destino.toFloat(), scrollX.toFloat())
+                var target = dockSpring.target.toInt()
+                if (rect.left - air < target) target = rect.left - air
+                if (rect.right + air > target + width) target = rect.right + air - width
+                target = target.coerceIn(0, maxOf(0, total - width))
+                if (target != dockSpring.target.toInt()) dockSpring.animateTo(target.toFloat(), scrollX.toFloat())
                 return 0
             }
         }.apply {
@@ -105,328 +105,328 @@ class HomeActivity : Activity() {
             clipToPadding = false
             isFocusable = false
             descendantFocusability = FrameLayout.FOCUS_AFTER_DESCENDANTS
-            addView(fila)
+            addView(row)
         }
-        raiz.addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        root.addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
 
-        // Arriba a la derecha, un botón ⋯ con las opciones de la foto. Se llega con ↑ desde el dock.
-        menuFoto = boton("•••") { opcionesFoto() }
-        raiz.addView(menuFoto, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
-            setMargins(0, escena.dp(32), escena.dp(48), 0)
+        // Top right, a ••• button with the photo's options, reached with ↑ from the dock.
+        photoMenu = pillButton("•••") { showPhotoOptions() }
+        root.addView(photoMenu, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+            setMargins(0, scene.dp(32), scene.dp(48), 0)
         })
-        escena.alCambiarFoto = { foto -> favoritaActual = foto.favorita }
+        scene.onPhotoChange = { photo -> currentIsFavorite = photo.favorite }
 
-        raiz.clipChildren = false
-        setContentView(raiz)
-        sonando = Sonando(this) { escena.ponerCancion(it) }
-        acomodar()
-        principal.post(refrescarFondos)
-        // Al conectar o desconectar algo en un HDMI, su tarjeta aparece o desaparece del dock.
-        entradas = Entradas.seguir(this) {
-            if (enPantalla && moviendo == null) llenarDock() else versionDock = -1
+        root.clipChildren = false
+        setContentView(root)
+        nowPlaying = NowPlaying(this) { scene.setSong(it) }
+        layoutOverlay()
+        main.post(refreshPhotos)
+        // Plugging something into an HDMI port adds its tile to the dock, and unplugging removes it.
+        inputsCallback = Inputs.watch(this) {
+            if (onScreen && moving == null) fillDock() else dockVersion = -1
         }
-        avisarSiPerdioHome(intent)
+        warnIfHomeLost(intent)
     }
 
-    // Lo abre Guardia cuando una actualización le regresó el botón Home a Google TV.
-    private fun avisarSiPerdioHome(intent: Intent) {
-        if (!intent.getBooleanExtra(Guardia.AVISO, false)) return
+    private fun warnIfHomeLost(intent: Intent) {
+        if (!intent.getBooleanExtra(HomeGuard.EXTRA_LOST_HOME, false)) return
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Google TV volvió a ser la pantalla de inicio")
             .setMessage("Seguramente se actualizó la TV. Para que el botón Home vuelva a abrir Inicio, " +
-                "corre ./revisar.sh desde la computadora con ARREGLAR=1.")
+                "corre FIX=1 ./check.sh desde la computadora.")
             .setPositiveButton("Entendido", null)
             .show()
     }
 
-    private fun boton(texto: String, accion: () -> Unit) = TextView(this).apply {
-        text = texto
+    private fun pillButton(label: String, action: () -> Unit) = TextView(this).apply {
+        text = label
         isFocusable = true
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         letterSpacing = 0.1f
-        setPadding(escena.dp(14), escena.dp(6), escena.dp(14), escena.dp(6))
-        val normal = GradientDrawable().apply { cornerRadius = escena.dp(20).toFloat(); setColor(0x40000000) }
-        val enfocado = GradientDrawable().apply { cornerRadius = escena.dp(20).toFloat(); setColor(Color.WHITE) }
+        setPadding(scene.dp(14), scene.dp(6), scene.dp(14), scene.dp(6))
+        val normal = GradientDrawable().apply { cornerRadius = scene.dp(20).toFloat(); setColor(0x40000000) }
+        val focused = GradientDrawable().apply { cornerRadius = scene.dp(20).toFloat(); setColor(Color.WHITE) }
         background = normal
         setTextColor(Color.WHITE)
         alpha = 0.75f
-        setOnFocusChangeListener { _, foco ->
-            background = if (foco) enfocado else normal
-            setTextColor(if (foco) 0xFF101418.toInt() else Color.WHITE)
-            animate().alpha(if (foco) 1f else 0.75f).scaleX(if (foco) 1.06f else 1f)
-                .scaleY(if (foco) 1.06f else 1f).setDuration(150).start()
+        setOnFocusChangeListener { _, hasFocus ->
+            background = if (hasFocus) focused else normal
+            setTextColor(if (hasFocus) 0xFF101418.toInt() else Color.WHITE)
+            animate().alpha(if (hasFocus) 1f else 0.75f).scaleX(if (hasFocus) 1.06f else 1f)
+                .scaleY(if (hasFocus) 1.06f else 1f).setDuration(150).start()
         }
-        setOnClickListener { accion() }
+        setOnClickListener { action() }
     }
 
-    private fun opcionesFoto() {
-        val foto = escena.actual ?: return
-        val fija = Fondos.fija(this) != null
-        val opciones = buildList<Pair<String, () -> Unit>> {
-            add((if (favoritaActual) "♥  Quitar de guardadas" else "♡  Guardar esta foto") to { alternarFavorita(foto) })
-            if (fija) {
-                add("◎  Volver a cambiar de foto" to { fijar(null) })
+    private fun showPhotoOptions() {
+        val photo = scene.current ?: return
+        val pinned = Photos.pinned(this) != null
+        val options = buildList<Pair<String, () -> Unit>> {
+            add((if (currentIsFavorite) "♥  Quitar de guardadas" else "♡  Guardar esta foto") to { toggleFavorite(photo) })
+            if (pinned) {
+                add("◎  Volver a cambiar de foto" to { pin(null) })
             } else {
-                add("↻  Otra foto" to { escena.otra() })
-                add("◎  Dejar siempre esta foto" to { fijar(foto) })
+                add("↻  Otra foto" to { scene.skip() })
+                add("◎  Dejar siempre esta foto" to { pin(photo) })
             }
-            add((if (foto.propia) "✕  Borrar esta foto" else "✕  No volver a mostrar") to { ocultarFoto() })
-            if (foto.propia) add((if (foto.llenar) "⤢  Verla completa" else "⤢  Llenar la pantalla") to {
-                trabajo.execute {
-                    Fondos.ponerLlenar(this@HomeActivity, foto, !foto.llenar)
-                    principal.post { escena.mostrarDeNuevo() }
+            add((if (photo.own) "✕  Borrar esta foto" else "✕  No volver a mostrar") to { hideCurrentPhoto() })
+            if (photo.own) add((if (photo.fill) "⤢  Verla completa" else "⤢  Llenar la pantalla") to {
+                worker.execute {
+                    Photos.setFill(this@HomeActivity, photo, !photo.fill)
+                    main.post { scene.redrawCurrent() }
                 }
             })
-            add("▦  Mis fotos" to { startActivity(Intent(this@HomeActivity, GaleriaActivity::class.java)) })
-            Actualizacion.disponible?.let { v -> add("↑  Actualizar Inicio a ${v.nombre}" to { actualizar(v) }) }
+            add("▦  Mis fotos" to { startActivity(Intent(this@HomeActivity, GalleryActivity::class.java)) })
+            Updater.available?.let { v -> add("↑  Actualizar Inicio a ${v.name}" to { update(v) }) }
             add("Cancelar" to {})
         }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(foto.lugar.ifEmpty { if (foto.propia) "Tu foto" else "Esta foto" })
-            .setItems(opciones.map { it.first }.toTypedArray()) { _, i -> opciones[i].second() }
+            .setTitle(photo.place.ifEmpty { if (photo.own) "Tu foto" else "Esta foto" })
+            .setItems(options.map { it.first }.toTypedArray()) { _, i -> options[i].second() }
             .show()
     }
 
-    private fun fijar(foto: Foto?) {
-        Fondos.ponerFija(this, foto)
-        escena.recargar(saltar = foto == null)
+    private fun pin(photo: Photo?) {
+        Photos.setPinned(this, photo)
+        scene.reload(advanceNow = photo == null)
     }
 
-    // Con versión nueva el botón dice "↑ •••", para que se note sin abrir el menú.
-    private fun avisarActualizacion() {
-        menuFoto.text = if (Actualizacion.disponible != null) "↑  •••" else "•••"
+    // With a new version out, the button reads "↑ •••" so it shows without opening the menu.
+    private fun showUpdateBadge() {
+        photoMenu.text = if (Updater.available != null) "↑  •••" else "•••"
     }
 
-    private fun actualizar(v: Actualizacion.Version) {
-        Toast.makeText(this, "Descargando Inicio ${v.nombre}…", Toast.LENGTH_LONG).show()
-        trabajo.execute {
+    private fun update(v: Updater.Version) {
+        Toast.makeText(this, "Descargando Inicio ${v.name}…", Toast.LENGTH_LONG).show()
+        worker.execute {
             try {
-                Actualizacion.instalar(this, v)
+                Updater.install(this, v)
             } catch (e: Exception) {
-                principal.post { Toast.makeText(this, "No se pudo actualizar: ${e.message}", Toast.LENGTH_LONG).show() }
+                main.post { Toast.makeText(this, "No se pudo actualizar: ${e.message}", Toast.LENGTH_LONG).show() }
             }
         }
     }
 
-    private fun alternarFavorita(foto: Foto) {
-        val nueva = !favoritaActual
-        favoritaActual = nueva
-        trabajo.execute {
-            Fondos.marcarFavorita(this, foto, nueva)
-            principal.post { escena.recargar(saltar = false) }
+    private fun toggleFavorite(photo: Photo) {
+        val favorite = !currentIsFavorite
+        currentIsFavorite = favorite
+        worker.execute {
+            Photos.setFavorite(this, photo, favorite)
+            main.post { scene.reload(advanceNow = false) }
         }
     }
 
-    private fun ocultarFoto() {
-        val foto = escena.actual ?: return
-        trabajo.execute {
-            Fondos.ocultar(this, foto)
-            principal.post { escena.recargar(saltar = true) }
+    private fun hideCurrentPhoto() {
+        val photo = scene.current ?: return
+        worker.execute {
+            Photos.hide(this, photo)
+            main.post { scene.reload(advanceNow = true) }
         }
     }
 
-    private fun acomodar() {
-        val m = escena.dp(48)
-        val sobreDock = if (modoCuadro) m else escena.dp(170)
-        (escena.info.layoutParams as FrameLayout.LayoutParams).setMargins(m, 0, 0, sobreDock)
-        (escena.credito.layoutParams as FrameLayout.LayoutParams).setMargins(0, 0, m, sobreDock)
-        escena.info.requestLayout()
-        escena.credito.requestLayout()
+    private fun layoutOverlay() {
+        val m = scene.dp(48)
+        val aboveDock = if (frameMode) m else scene.dp(170)
+        (scene.info.layoutParams as FrameLayout.LayoutParams).setMargins(m, 0, 0, aboveDock)
+        (scene.credit.layoutParams as FrameLayout.LayoutParams).setMargins(0, 0, m, aboveDock)
+        scene.info.requestLayout()
+        scene.credit.requestLayout()
     }
 
-    private fun llenarDock() {
-        versionDock = Dock.version
-        fila.removeAllViews()
-        val hdmi = Entradas.hdmi(this)
-        val extras = listOf(App("Todas las apps", icono(android.R.drawable.ic_dialog_dialer),
+    private fun fillDock() {
+        dockVersion = Dock.version
+        row.removeAllViews()
+        val hdmi = Inputs.hdmi(this)
+        val fixed = listOf(App("Todas las apps", icon(android.R.drawable.ic_dialog_dialer),
             Intent(this, AppsActivity::class.java))) +
-            hdmi.ifEmpty { listOf(App("Entradas", icono(android.R.drawable.ic_menu_slideshow), Apps.entradas())) } +
-            App("Ajustes", icono(android.R.drawable.ic_menu_preferences), Apps.ajustes())
-        Apps.favoritas(this).forEach { app ->
-            val t = Tarjeta(this, app, 128, 72)
-            t.alMantener = { menuDock(t, app) }
-            agregarAlDock(t)
+            hdmi.ifEmpty { listOf(App("Entradas", icon(android.R.drawable.ic_menu_slideshow), Apps.inputs())) } +
+            App("Ajustes", icon(android.R.drawable.ic_menu_preferences), Apps.settings())
+        Apps.docked(this).forEach { app ->
+            val t = Tile(this, app, 128, 72)
+            t.onLongPress = { showDockMenu(t, app) }
+            addToDock(t)
         }
-        extras.forEach { agregarAlDock(Tarjeta(this, it, 128, 72)) }
-        fila.getChildAt(0)?.requestFocus()
+        fixed.forEach { addToDock(Tile(this, it, 128, 72)) }
+        row.getChildAt(0)?.requestFocus()
     }
 
-    private fun agregarAlDock(t: Tarjeta) =
-        fila.addView(t, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = escena.dp(14) })
+    private fun addToDock(t: Tile) =
+        row.addView(t, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = scene.dp(14) })
 
-    private fun menuDock(t: Tarjeta, app: App) {
+    private fun showDockMenu(t: Tile, app: App) {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(app.nombre)
+            .setTitle(app.name)
             .setItems(arrayOf("Mover", "Quitar del inicio", "Cancelar")) { _, i ->
                 when (i) {
-                    0 -> empezarAMover(t)
-                    1 -> app.paquete?.let { Dock.quitar(this, it); llenarDock() }
+                    0 -> startMoving(t)
+                    1 -> app.packageName?.let { Dock.remove(this, it); fillDock() }
                 }
             }
             .show()
     }
 
-    private fun empezarAMover(t: Tarjeta) {
-        moviendo = t
-        t.temblar(true)
+    private fun startMoving(t: Tile) {
+        moving = t
+        t.setWiggling(true)
         t.requestFocus()
     }
 
-    private fun moverA(direccion: Int) {
-        val t = moviendo ?: return
-        val i = fila.indexOfChild(t)
-        val favoritas = Dock.lista(this).size.coerceAtMost(fila.childCount)
-        val j = i + direccion
-        // Solo se mueve entre las apps del dock, no entre los accesos fijos del final.
-        if (j < 0 || j >= favoritas) return
-        fila.removeViewAt(i)
-        fila.addView(t, j, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = escena.dp(14) })
+    private fun moveBy(step: Int) {
+        val t = moving ?: return
+        val i = row.indexOfChild(t)
+        val docked = Dock.list(this).size.coerceAtMost(row.childCount)
+        val j = i + step
+        // Only among the docked apps, not the fixed tiles at the end.
+        if (j < 0 || j >= docked) return
+        row.removeViewAt(i)
+        row.addView(t, j, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = scene.dp(14) })
         t.requestFocus()
     }
 
-    private fun terminarDeMover() {
-        val t = moviendo ?: return
-        moviendo = null
-        t.temblar(false)
-        val orden = (0 until fila.childCount).mapNotNull { (fila.getChildAt(it) as? Tarjeta)?.app?.paquete }
-            .filter { Dock.contiene(this, it) }
-        Dock.guardar(this, orden)
-        versionDock = Dock.version
+    private fun finishMoving() {
+        val t = moving ?: return
+        moving = null
+        t.setWiggling(false)
+        val order = (0 until row.childCount).mapNotNull { (row.getChildAt(it) as? Tile)?.app?.packageName }
+            .filter { Dock.contains(this, it) }
+        Dock.save(this, order)
+        dockVersion = Dock.version
     }
 
-    private fun icono(res: Int) = LayerDrawable(arrayOf(
+    private fun icon(res: Int) = LayerDrawable(arrayOf(
         GradientDrawable().apply { setColor(0x40FFFFFF) },
         getDrawable(res)!!.mutate().apply { setTint(Color.WHITE) },
-    )).apply { setLayerInset(1, escena.dp(52), escena.dp(22), escena.dp(52), escena.dp(22)) }
+    )).apply { setLayerInset(1, scene.dp(52), scene.dp(22), scene.dp(52), scene.dp(22)) }
 
-    private fun revisarNoche() {
-        val noche = Noche.esDeNoche()
-        escena.ponerNoche(noche)
-        trabajo.execute { Noche.ajustarApagado(this, noche) }
+    private fun checkNight() {
+        val night = Night.isNight()
+        scene.setNight(night)
+        worker.execute { Night.applySleepTimeout(this, night) }
     }
 
     override fun onStart() {
         super.onStart()
-        enPantalla = true
+        onScreen = true
     }
 
     override fun onStop() {
         super.onStop()
-        enPantalla = false
+        onScreen = false
     }
 
-    // Las dos fotos del fondo pesan unos 16 MB. Se sueltan solo si Android pide memoria mientras
-    // otra app está al frente; con el inicio en pantalla nunca, para no dejar un hueco negro.
+    // The two background photos take about 16 MB. They're released only when Android asks for memory while
+    // another app is in front. Inicio stays a foreground process then (the system keeps MediaListener bound),
+    // so it gets the RUNNING_* levels, never TRIM_MEMORY_BACKGROUND.
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (enPantalla) return
+        if (onScreen) return
         if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
             level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
             level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
-        ) escena.soltarFotos()
+        ) scene.releasePhotos()
     }
 
     override fun onResume() {
         super.onResume()
-        if (!intent.getBooleanExtra(Guardia.AVISO, false)) Guardia.anotar(this)
-        if (versionDock != Dock.version) llenarDock()
-        escena.iniciar(180_000L)
-        sonando.iniciar()
-        principal.post(actualizarClima)
-        principal.post(cadaMinuto)
-        salirModoCuadro()
+        if (!intent.getBooleanExtra(HomeGuard.EXTRA_LOST_HOME, false)) HomeGuard.remember(this)
+        if (dockVersion != Dock.version) fillDock()
+        scene.start(180_000L)
+        nowPlaying.start()
+        main.post(refreshWeather)
+        main.post(everyMinute)
+        exitFrameMode()
     }
 
     override fun onPause() {
         super.onPause()
-        terminarDeMover()
-        escena.detener()
-        sonando.detener()
-        principal.removeCallbacks(actualizarClima)
-        principal.removeCallbacks(cadaMinuto)
-        principal.removeCallbacks(ocultarDock)
+        finishMoving()
+        scene.stop()
+        nowPlaying.stop()
+        main.removeCallbacks(refreshWeather)
+        main.removeCallbacks(everyMinute)
+        main.removeCallbacks(hideDock)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        principal.removeCallbacksAndMessages(null)
-        Entradas.dejarDeSeguir(this, entradas)
-        escena.liberar()
-        trabajo.shutdownNow()
+        main.removeCallbacksAndMessages(null)
+        Inputs.unwatch(this, inputsCallback)
+        scene.release()
+        worker.shutdownNow()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        principal.removeCallbacks(ocultarDock)
-        principal.postDelayed(ocultarDock, 45_000L)
-        if (modoCuadro) {
-            // La primera tecla solo despierta el dock; no abre nada.
-            if (event.action == KeyEvent.ACTION_UP) salirModoCuadro()
+        main.removeCallbacks(hideDock)
+        main.postDelayed(hideDock, 45_000L)
+        if (frameMode) {
+            // The first key only brings the dock back; it opens nothing.
+            if (event.action == KeyEvent.ACTION_UP) exitFrameMode()
             return true
         }
-        if (tragarSoltar && event.action == KeyEvent.ACTION_UP) {
-            tragarSoltar = false
+        if (swallowKeyUp && event.action == KeyEvent.ACTION_UP) {
+            swallowKeyUp = false
             return true
         }
-        if (moviendo != null) {
+        if (moving != null) {
             if (event.action == KeyEvent.ACTION_DOWN) when (event.keyCode) {
-                KeyEvent.KEYCODE_DPAD_LEFT -> moverA(-1)
-                KeyEvent.KEYCODE_DPAD_RIGHT -> moverA(1)
+                KeyEvent.KEYCODE_DPAD_LEFT -> moveBy(-1)
+                KeyEvent.KEYCODE_DPAD_RIGHT -> moveBy(1)
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BACK -> {
-                    terminarDeMover()
-                    tragarSoltar = true
+                    finishMoving()
+                    swallowKeyUp = true
                 }
             }
             return true
         }
-        // En las orillas del dock el foco no salta al ••• de arriba: la tarjeta solo se inclina.
-        val enfocada = currentFocus as? Tarjeta
-        if (enfocada != null && event.action == KeyEvent.ACTION_DOWN && enfocada.parent == fila) {
-            val i = fila.indexOfChild(enfocada)
+        // At the dock's ends focus doesn't jump to the ••• above: the tile just tilts.
+        val focused = currentFocus as? Tile
+        if (focused != null && event.action == KeyEvent.ACTION_DOWN && focused.parent == row) {
+            val i = row.indexOfChild(focused)
             when {
-                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && i == fila.childCount - 1 -> {
-                    enfocada.inclinar(android.view.View.FOCUS_RIGHT); return true
+                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && i == row.childCount - 1 -> {
+                    focused.tilt(View.FOCUS_RIGHT); return true
                 }
                 event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && i == 0 -> {
-                    enfocada.inclinar(android.view.View.FOCUS_LEFT); return true
+                    focused.tilt(View.FOCUS_LEFT); return true
                 }
             }
         }
         return super.dispatchKeyEvent(event)
     }
 
-    // Es la pantalla de inicio: "Atrás" no tiene a dónde regresar.
+    // This is the home screen: Back has nowhere to go.
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() = Unit
 
-    // Si ya estamos en inicio y presionan Home, regresa el foco a la primera app.
+    // Home pressed while already home: focus goes back to the first app.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        avisarSiPerdioHome(intent)
+        warnIfHomeLost(intent)
         if (Intent.ACTION_MAIN == intent.action) {
-            terminarDeMover()
-            salirModoCuadro()
-            resorteDock.ir(0f, dock.scrollX.toFloat())
-            fila.getChildAt(0)?.requestFocus()
+            finishMoving()
+            exitFrameMode()
+            dockSpring.animateTo(0f, dock.scrollX.toFloat())
+            row.getChildAt(0)?.requestFocus()
         }
     }
 
-    private fun entrarModoCuadro() {
-        if (moviendo != null) return
-        modoCuadro = true
-        dock.animate().alpha(0f).translationY(escena.dp(40).toFloat()).setDuration(600).start()
-        menuFoto.animate().alpha(0f).setDuration(600).start()
-        acomodar()
+    private fun enterFrameMode() {
+        if (moving != null) return
+        frameMode = true
+        dock.animate().alpha(0f).translationY(scene.dp(40).toFloat()).setDuration(600).start()
+        photoMenu.animate().alpha(0f).setDuration(600).start()
+        layoutOverlay()
     }
 
-    private fun salirModoCuadro() {
-        modoCuadro = false
+    private fun exitFrameMode() {
+        frameMode = false
         dock.animate().alpha(1f).translationY(0f).setDuration(250).start()
-        menuFoto.animate().alpha(1f).setDuration(250).start()
-        acomodar()
-        principal.removeCallbacks(ocultarDock)
-        principal.postDelayed(ocultarDock, 45_000L)
-        if (currentFocus == null) fila.getChildAt(0)?.requestFocus()
+        photoMenu.animate().alpha(1f).setDuration(250).start()
+        layoutOverlay()
+        main.removeCallbacks(hideDock)
+        main.postDelayed(hideDock, 45_000L)
+        if (currentFocus == null) row.getChildAt(0)?.requestFocus()
     }
 }

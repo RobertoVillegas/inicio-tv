@@ -31,8 +31,8 @@ jobs:
             echo "storePassword=$STORE_PASSWORD"
             echo "keyAlias=inicio"
             echo "keyPassword=$KEY_PASSWORD"
-          } > "$RUNNER_TEMP/firma.properties"
-          echo "INICIO_FIRMA=$RUNNER_TEMP/firma.properties" >> "$GITHUB_ENV"
+          } > "$RUNNER_TEMP/signing.properties"
+          echo "INICIO_SIGNING=$RUNNER_TEMP/signing.properties" >> "$GITHUB_ENV"
 
       - name: Build APK
         working-directory: inicio
