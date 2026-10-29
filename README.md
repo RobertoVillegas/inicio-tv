@@ -152,6 +152,8 @@ adb install -r inicio-v0.2.0.apk
 
 Then run the `adb shell` lines in [`instalar-inicio.sh`](instalar-inicio.sh): the auto-start permission, the music listener, the night timer and the screensaver.
 
+**From the TV, with no computer.** In the [Downloader](https://www.aftvnews.com/downloader/) app, enter code **`4993644`**. It always fetches the latest release ([`releases/latest/download/inicio.apk`](https://github.com/RobertoVillegas/tcl-tv/releases/latest/download/inicio.apk)). This installs Inicio as a regular app you can open. Making it the home screen, and the permissions above, still need ADB, because Google TV has no setting for choosing another home screen.
+
 ### Building it yourself
 
 You need JDK 21 and the Android SDK (`brew install --cask android-commandlinetools`, then `sdkmanager "platforms;android-35"`):
