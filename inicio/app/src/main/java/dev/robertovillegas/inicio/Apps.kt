@@ -6,7 +6,12 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -119,16 +124,15 @@ object Apps {
 }
 
 /**
- * Una tarjeta de app al estilo Apple TV: al recibir el foco se eleva con un pequeño rebote,
- * proyecta sombra y un brillo cruza la superficie. Si el control empuja contra una orilla,
+ * Una tarjeta de app al estilo Apple TV: esquinas redondas con un filo de luz arriba que le da
+ * relieve, y al recibir el foco se eleva con un pequeño rebote y proyecta sombra. Si el control empuja contra una orilla,
  * la tarjeta se inclina un poco hacia ese lado y regresa.
  */
 class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(ctx) {
     private val marco = FrameLayout(ctx)
-    private val brillo = View(ctx)
+    private val filo = Filo(ctx, dp(12).toFloat(), dp(1).toFloat() * 1.5f)
     private val reflejo = View(ctx)
     private val nombre = TextView(ctx)
-    private val anchoPx = dp(ancho).toFloat()
     private var mantenida = false
     private var temblor: ObjectAnimator? = null
 
@@ -165,14 +169,8 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
         reflejo.alpha = 0f
         marco.addView(reflejo, LayoutParams(-1, -1))
 
-        // Franja diagonal que cruza la tarjeta una vez al enfocarla.
-        brillo.background = GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
-            intArrayOf(0x00FFFFFF, 0x50FFFFFF, 0x00FFFFFF),
-        )
-        brillo.rotation = 18f
-        brillo.alpha = 0f
-        marco.addView(brillo, LayoutParams(dp(ancho / 3), dp(alto * 2), Gravity.CENTER_VERTICAL))
+        filo.alpha = 0.45f
+        marco.addView(filo, LayoutParams(-1, -1))
         addView(marco, LayoutParams(dp(ancho), dp(alto)))
 
         nombre.text = app.nombre
@@ -198,10 +196,7 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
         reflejo.animate().alpha(1f).setDuration(200).start()
         nombre.translationY = dp(-6).toFloat()
         nombre.animate().alpha(1f).translationY(0f).setDuration(220).start()
-        brillo.translationX = -anchoPx / 2
-        brillo.alpha = 1f
-        brillo.animate().translationX(anchoPx * 1.2f).setInterpolator(DecelerateInterpolator())
-            .setDuration(650).withEndAction { brillo.alpha = 0f }.start()
+        filo.animate().alpha(1f).setDuration(200).start()
     }
 
     private fun desenfocar() {
@@ -209,8 +204,7 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
             .setInterpolator(DecelerateInterpolator()).setDuration(200).start()
         reflejo.animate().alpha(0f).setDuration(150).start()
         nombre.animate().alpha(0f).setDuration(120).start()
-        brillo.animate().cancel()
-        brillo.alpha = 0f
+        filo.animate().alpha(0.45f).setDuration(200).start()
     }
 
     private fun tecla(code: Int, ev: KeyEvent): Boolean {
@@ -277,4 +271,21 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
                     .setDuration(380).start()
             }.start()
     }
+}
+
+/**
+ * El borde de una tarjeta: una línea fina de luz que es más clara arriba y casi desaparece abajo,
+ * como el canto de un vidrio iluminado desde arriba.
+ */
+private class Filo(ctx: Context, private val radio: Float, private val grosor: Float) : View(ctx) {
+    private val pincel = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = grosor }
+    private val caja = RectF()
+
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        pincel.shader = LinearGradient(0f, 0f, 0f, h.toFloat(), intArrayOf(0x73FFFFFF, 0x1AFFFFFF, 0x08FFFFFF),
+            floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+        caja.set(grosor / 2, grosor / 2, w - grosor / 2, h - grosor / 2)
+    }
+
+    override fun onDraw(c: Canvas) = c.drawRoundRect(caja, radio - grosor / 2, radio - grosor / 2, pincel)
 }

@@ -25,6 +25,7 @@ class HomeActivity : Activity() {
     private lateinit var escena: Escena
     private lateinit var dock: HorizontalScrollView
     private lateinit var fila: LinearLayout
+    private val resorteDock = Resorte { dock.scrollTo(it.toInt(), 0) }
     private lateinit var menuFoto: TextView
     private var favoritaActual = false
     private lateinit var sonando: Sonando
@@ -81,10 +82,19 @@ class HomeActivity : Activity() {
         }
         // Al enfocar una tarjeta el dock deja aire a los lados. En la primera y la última eso
         // alcanza la orilla, así que se ve completa (con su margen) sin otro clic hacia el borde.
+        // El desplazamiento lo hace el resorte, no el scroll de Android, que dura siempre lo mismo
+        // y se corta al presionar seguido.
         val aire = escena.dp(72)
         dock = object : HorizontalScrollView(this) {
-            override fun computeScrollDeltaToGetChildRectOnScreen(rect: Rect) =
-                super.computeScrollDeltaToGetChildRectOnScreen(Rect(rect).apply { inset(-aire, 0) })
+            override fun computeScrollDeltaToGetChildRectOnScreen(rect: Rect): Int {
+                val total = getChildAt(0)?.width ?: return 0
+                var destino = resorteDock.destino.toInt()
+                if (rect.left - aire < destino) destino = rect.left - aire
+                if (rect.right + aire > destino + width) destino = rect.right + aire - width
+                destino = destino.coerceIn(0, maxOf(0, total - width))
+                if (destino != resorteDock.destino.toInt()) resorteDock.ir(destino.toFloat(), scrollX.toFloat())
+                return 0
+            }
         }.apply {
             isHorizontalScrollBarEnabled = false
             clipChildren = false
@@ -352,7 +362,7 @@ class HomeActivity : Activity() {
         if (Intent.ACTION_MAIN == intent.action) {
             terminarDeMover()
             salirModoCuadro()
-            dock.smoothScrollTo(0, 0)
+            resorteDock.ir(0f, dock.scrollX.toFloat())
             fila.getChildAt(0)?.requestFocus()
         }
     }
