@@ -1,15 +1,26 @@
 #!/bin/bash
-# Compila e instala la app Inicio, y la deja como protector de pantalla con tiempos que cuidan el panel.
+# Instala Inicio (el último release de GitHub, o compilado aquí con COMPILAR=1), le da sus
+# permisos y la deja como protector de pantalla con tiempos que cuidan el panel.
 # No la pone como pantalla de inicio: eso lo hace poner-inicio.sh.
+#
+# Uso:  ./instalar-inicio.sh [ip-de-la-tv]        COMPILAR=1 ./instalar-inicio.sh  para compilar desde el código
 set -eu
-TV="${TV:-192.168.0.122:5555}"
-cd "$(dirname "$0")/inicio"
-ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ./gradlew assembleRelease -q
+TV="${1:-${TV:-192.168.0.122}}"
+[[ "$TV" == *:* ]] || TV="$TV:5555"
+if [ "${COMPILAR:-0}" = 1 ]; then
+  (cd "$(dirname "$0")/inicio" && ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ./gradlew assembleRelease -q)
+  apk="$(dirname "$0")/inicio/app/build/outputs/apk/release/app-release.apk"
+else
+  apk="$(mktemp -d)/inicio.apk"
+  curl -fsSL -o "$apk" https://github.com/RobertoVillegas/inicio-tv/releases/latest/download/inicio.apk
+fi
 adb connect "$TV" >/dev/null 2>&1
-adb -s "$TV" install -r app/build/outputs/apk/release/app-release.apk
+adb -s "$TV" get-state >/dev/null 2>&1 || { echo "No conecta con la TV ($TV). ¿Aceptaste la depuración en la pantalla?"; exit 1; }
+adb -s "$TV" install -r "$apk"
 adb -s "$TV" shell '
 # TCL bloquea que las apps de terceros arranquen servicios solas; sin esto el protector no abre.
-cmd appops set dev.robertovillegas.inicio APP_AUTO_START allow
+# En otras marcas ese permiso no existe y el comando solo avisa.
+cmd appops set dev.robertovillegas.inicio APP_AUTO_START allow 2>/dev/null
 # Leer la musica que esta sonando (Spotify, SmartTube) para mostrarla en el inicio y el protector.
 cmd notification allow_listener dev.robertovillegas.inicio/dev.robertovillegas.inicio.Escucha
 # Cambiar el apagado: 10 min de noche, ~19 min de dia.
