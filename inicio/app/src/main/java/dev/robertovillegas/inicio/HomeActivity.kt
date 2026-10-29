@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
@@ -73,7 +74,13 @@ class HomeActivity : Activity() {
             clipToPadding = false
             setPadding(escena.dp(48), escena.dp(14), escena.dp(48), escena.dp(44))
         }
-        dock = HorizontalScrollView(this).apply {
+        // Al enfocar una tarjeta el dock deja aire a los lados. En la primera y la última eso
+        // alcanza la orilla, así que se ve completa (con su margen) sin otro clic hacia el borde.
+        val aire = escena.dp(72)
+        dock = object : HorizontalScrollView(this) {
+            override fun computeScrollDeltaToGetChildRectOnScreen(rect: Rect) =
+                super.computeScrollDeltaToGetChildRectOnScreen(Rect(rect).apply { inset(-aire, 0) })
+        }.apply {
             isHorizontalScrollBarEnabled = false
             clipChildren = false
             clipToPadding = false
@@ -284,6 +291,19 @@ class HomeActivity : Activity() {
                 }
             }
             return true
+        }
+        // En las orillas del dock el foco no salta al ••• de arriba: la tarjeta solo se inclina.
+        val enfocada = currentFocus as? Tarjeta
+        if (enfocada != null && event.action == KeyEvent.ACTION_DOWN && enfocada.parent == fila) {
+            val i = fila.indexOfChild(enfocada)
+            when {
+                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && i == fila.childCount - 1 -> {
+                    enfocada.inclinar(android.view.View.FOCUS_RIGHT); return true
+                }
+                event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && i == 0 -> {
+                    enfocada.inclinar(android.view.View.FOCUS_LEFT); return true
+                }
+            }
         }
         return super.dispatchKeyEvent(event)
     }

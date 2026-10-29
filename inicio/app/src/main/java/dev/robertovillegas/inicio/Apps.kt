@@ -264,7 +264,7 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
         }
     }
 
-    private fun inclinar(direccion: Int) {
+    fun inclinar(direccion: Int) {
         val (rx, ry) = when (direccion) {
             FOCUS_LEFT -> 0f to -10f
             FOCUS_RIGHT -> 0f to 10f
