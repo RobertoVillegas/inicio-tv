@@ -12,6 +12,14 @@ Google TV's home screen opens on a full-width ad with a row of sponsored picks u
 |---|---|
 | ![The Paisajes screensaver on an Andaman beach, showing the Spotify song above the clock](docs/screensaver-now-playing.jpg) | ![The end of the dock: Spotify, SmartTube, All apps and three HDMI tiles](docs/dock-hdmi.jpg) |
 
+| Your own photo, with where and when it was taken | Adding photos from a phone |
+|---|---|
+| ![Inicio showing a phone photo of mountains at sunset, credited "Victoria, Tamaulipas, México" and its date](docs/mis-fotos-inicio.jpg) | ![The add-photos screen: a QR code and three steps](docs/subir-fotos.jpg) |
+
+| The gallery: what shows on screen, photo by photo | The `•••` menu |
+|---|---|
+| ![The Mis fotos gallery with the three display modes and six photos](docs/galeria.jpg) | ![The photo menu: save, next photo, pin, never show again, my photos](docs/menu-foto.jpg) |
+
 *The interface is in Spanish because it was made for a Mexican household.*
 
 ## What it does
