@@ -175,7 +175,7 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
             fotos = rotacion()
             principal.post { avanzar() }
             // Con pocas fotos guardadas, baja más y las suma a la rotación.
-            if (fotos.size < 12) {
+            if (Fondos.listar(context).size < 12) {
                 Fondos.refrescar(context)
                 fotos = rotacion()
                 principal.post { if (capas.all { it.drawable == null }) avanzar() }
@@ -183,8 +183,7 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
         }
     }
 
-    // Las favoritas entran dos veces, así salen el doble.
-    private fun rotacion() = Fondos.listar(context).let { l -> (l + l.filter { it.favorita }).shuffled() }
+    private fun rotacion() = Fondos.rotacion(context)
 
     fun detener() {
         activa = false
@@ -208,6 +207,16 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
             fotos = rotacion()
             siguiente = 0
             if (saltar) principal.post { avanzar() }
+        }
+    }
+
+    /** Vuelve a dibujar la foto actual con lo que hay en disco, por ejemplo al cambiar cómo se ve. */
+    fun mostrarDeNuevo() {
+        val nombre = actual?.archivo?.name ?: return
+        trabajo.execute {
+            val foto = Fondos.listar(context).firstOrNull { it.archivo.name == nombre } ?: return@execute
+            val bmp = Fondos.decodificar(foto) ?: return@execute
+            principal.post { if (activa) mostrar(bmp, foto) }
         }
     }
 

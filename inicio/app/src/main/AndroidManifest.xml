@@ -54,6 +54,18 @@
             android:exported="false"
             android:screenOrientation="landscape" />
 
+        <activity
+            android:name=".GaleriaActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".SubirActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
         <!-- Solo existe para poder leer qué música está sonando (ver Sonando.kt). -->
         <service
             android:name=".Escucha"

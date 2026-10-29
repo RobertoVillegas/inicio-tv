@@ -132,25 +132,35 @@ class HomeActivity : Activity() {
 
     private fun opcionesFoto() {
         val foto = escena.actual ?: return
-        val nueva = Actualizacion.disponible
-        val opciones = listOfNotNull(
-            if (favoritaActual) "♥  Quitar de guardadas" else "♡  Guardar esta foto",
-            "↻  Otra foto",
-            "✕  No volver a mostrar",
-            nueva?.let { "↑  Actualizar Inicio a ${it.nombre}" },
-            "Cancelar",
-        ).toTypedArray()
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(foto.lugar.ifEmpty { "Esta foto" })
-            .setItems(opciones) { _, i ->
-                when (i) {
-                    0 -> alternarFavorita(foto)
-                    1 -> escena.otra()
-                    2 -> ocultarFoto()
-                    3 -> nueva?.let { actualizar(it) }
-                }
+        val fija = Fondos.fija(this) != null
+        val opciones = buildList<Pair<String, () -> Unit>> {
+            add((if (favoritaActual) "♥  Quitar de guardadas" else "♡  Guardar esta foto") to { alternarFavorita(foto) })
+            if (fija) {
+                add("◎  Volver a cambiar de foto" to { fijar(null) })
+            } else {
+                add("↻  Otra foto" to { escena.otra() })
+                add("◎  Dejar siempre esta foto" to { fijar(foto) })
             }
+            add((if (foto.propia) "✕  Borrar esta foto" else "✕  No volver a mostrar") to { ocultarFoto() })
+            if (foto.propia) add((if (foto.llenar) "⤢  Verla completa" else "⤢  Llenar la pantalla") to {
+                trabajo.execute {
+                    Fondos.ponerLlenar(this@HomeActivity, foto, !foto.llenar)
+                    principal.post { escena.mostrarDeNuevo() }
+                }
+            })
+            add("▦  Mis fotos" to { startActivity(Intent(this@HomeActivity, GaleriaActivity::class.java)) })
+            Actualizacion.disponible?.let { v -> add("↑  Actualizar Inicio a ${v.nombre}" to { actualizar(v) }) }
+            add("Cancelar" to {})
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(foto.lugar.ifEmpty { if (foto.propia) "Tu foto" else "Esta foto" })
+            .setItems(opciones.map { it.first }.toTypedArray()) { _, i -> opciones[i].second() }
             .show()
+    }
+
+    private fun fijar(foto: Foto?) {
+        Fondos.ponerFija(this, foto)
+        escena.recargar(saltar = foto == null)
     }
 
     // Con versión nueva el botón dice "↑ •••", para que se note sin abrir el menú.

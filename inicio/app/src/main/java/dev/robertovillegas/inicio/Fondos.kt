@@ -3,12 +3,20 @@ package dev.robertovillegas.inicio
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Rect
+import android.media.ExifInterface
 import android.text.Html
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.URLEncoder
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 data class Foto(
     val archivo: File,
@@ -17,7 +25,15 @@ data class Foto(
     val autor: String,
     val licencia: String,
     val favorita: Boolean,
+    /** Subida desde el celular; nunca se borra al hacer espacio. */
+    val propia: Boolean = false,
+    /** Si entra en la rotación (solo se puede sacar una propia). */
+    val incluida: Boolean = true,
+    /** Propia que llena la pantalla recortada; si no, se ve completa sobre un fondo difuminado. */
+    val llenar: Boolean = true,
 )
+
+enum class Modo { MEZCLA, MIAS, PAISAJES }
 
 /**
  * Fotos de naturaleza destacadas de Wikimedia Commons, guardadas en el equipo para que
@@ -46,6 +62,7 @@ object Fondos {
 
     // La interfaz de la TV se dibuja a 1920x1080; una foto más grande solo gasta memoria.
     private const val ANCHO = 1920
+    private const val ALTO = 1080
     private const val MAXIMO = 40
     private const val NUEVAS_POR_RONDA = 6
     private const val UNA_SEMANA = 7L * 24 * 3600 * 1000
@@ -69,9 +86,51 @@ object Fondos {
                 o.optString("autor"),
                 o.optString("licencia"),
                 o.optBoolean("favorita"),
+                o.optBoolean("propia"),
+                o.optBoolean("incluida", true),
+                o.optBoolean("llenar", true),
             )
         }
     }
+
+    /** Las fotos que van a salir: la fija si hay; si no, según el modo (sin las propias que se sacaron). */
+    fun rotacion(ctx: Context): List<Foto> {
+        val todas = listar(ctx)
+        fija(ctx)?.let { nombre -> todas.firstOrNull { it.archivo.name == nombre }?.let { return listOf(it) } }
+        val mias = todas.filter { it.propia && it.incluida }
+        val paisajes = todas.filter { !it.propia }
+        val base = when (modo(ctx)) {
+            Modo.MIAS -> mias.ifEmpty { paisajes }
+            Modo.PAISAJES -> paisajes
+            Modo.MEZCLA -> paisajes + mias
+        }
+        // Las favoritas entran dos veces, así salen el doble.
+        return (base + base.filter { it.favorita }).shuffled()
+    }
+
+    private fun ajustes(ctx: Context) = ctx.getSharedPreferences("fotos", Context.MODE_PRIVATE)
+    fun fija(ctx: Context): String? = ajustes(ctx).getString("fija", null)
+    fun ponerFija(ctx: Context, foto: Foto?) = ajustes(ctx).edit().putString("fija", foto?.archivo?.name).apply()
+    fun modo(ctx: Context) = Modo.entries.firstOrNull { it.name == ajustes(ctx).getString("modo", null) } ?: Modo.MEZCLA
+    fun ponerModo(ctx: Context, m: Modo) = ajustes(ctx).edit().putString("modo", m.name).apply()
+
+    @Synchronized
+    fun ponerIncluida(ctx: Context, foto: Foto, si: Boolean) {
+        editarIndice(ctx) { o -> if (o.getString("archivo") == foto.archivo.name) o.put("incluida", si); o }
+    }
+
+    /** Cambia entre llenar la pantalla y verla completa, volviéndola a componer desde el original. */
+    fun ponerLlenar(ctx: Context, foto: Foto, si: Boolean) {
+        val bmp = BitmapFactory.decodeFile(original(foto).let { if (it.exists()) it else foto.archivo }.path) ?: return
+        guardar(componer(bmp, si), foto.archivo)
+        bmp.recycle()
+        synchronized(this) {
+            editarIndice(ctx) { o -> if (o.getString("archivo") == foto.archivo.name) o.put("llenar", si); o }
+        }
+    }
+
+    // Junto a cada propia se guarda la foto girada y sin recortar, para poder cambiar cómo se ve.
+    private fun original(foto: Foto) = File(foto.archivo.path.removeSuffix(".jpg") + ".orig.jpg")
 
     fun decodificar(foto: Foto): Bitmap? =
         BitmapFactory.decodeFile(foto.archivo.path, BitmapFactory.Options().apply {
@@ -101,12 +160,107 @@ object Fondos {
         editarIndice(ctx) { o -> if (o.getString("archivo") == foto.archivo.name) o.put("favorita", favorita); o }
     }
 
-    /** Saca la foto de la rotación para siempre: se borra y no se vuelve a bajar. */
+    /** Saca la foto de la rotación para siempre: se borra y, si es de Commons, no se vuelve a bajar. */
     @Synchronized
     fun ocultar(ctx: Context, foto: Foto) {
         editarIndice(ctx) { o -> if (o.getString("archivo") == foto.archivo.name) null else o }
         foto.archivo.delete()
-        vetadas(ctx).writeText(JSONArray(leerVetadas(ctx) + foto.archivo.name).toString())
+        original(foto).delete()
+        if (fija(ctx) == foto.archivo.name) ponerFija(ctx, null)
+        if (!foto.propia) vetadas(ctx).writeText(JSONArray(leerVetadas(ctx) + foto.archivo.name).toString())
+    }
+
+    /**
+     * Guarda una foto subida desde el celular, ya girada y a 1920x1080, llenando la pantalla.
+     * Si trae ubicación GPS se busca el lugar, y la fecha en que se tomó va como descripción.
+     */
+    fun importar(ctx: Context, origen: File): Boolean {
+        val exif = try { ExifInterface(origen.path) } catch (e: Exception) { null }
+        val giro = when (exif?.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        val limites = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(origen.path, limites)
+        if (limites.outWidth <= 0) return false
+        // Medidas ya giradas: se baja de resolución mientras siga cubriendo 1920x1080.
+        val (w, h) = if (giro == 90f || giro == 270f) limites.outHeight to limites.outWidth else limites.outWidth to limites.outHeight
+        var muestra = 1
+        while (w / (muestra * 2) >= ANCHO && h / (muestra * 2) >= ALTO) muestra *= 2
+        var bmp = BitmapFactory.decodeFile(origen.path, BitmapFactory.Options().apply {
+            inSampleSize = muestra
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }) ?: return false
+        if (giro != 0f) {
+            val girada = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(giro) }, true)
+            bmp.recycle()
+            bmp = girada
+        }
+
+        // El original se guarda a lo justo para cubrir 1920x1080, así una vertical aún puede llenar la pantalla.
+        val escala = minOf(1f, maxOf(ANCHO.toFloat() / bmp.width, ALTO.toFloat() / bmp.height))
+        if (escala < 1f) {
+            val chica = Bitmap.createScaledBitmap(bmp, (bmp.width * escala).toInt(), (bmp.height * escala).toInt(), true)
+            bmp.recycle()
+            bmp = chica
+        }
+        val nombre = "propia-${System.currentTimeMillis()}"
+        guardar(bmp, File(dir(ctx), "$nombre.orig.jpg"))
+        val archivo = "$nombre.jpg"
+        guardar(componer(bmp, llenar = true), File(dir(ctx), archivo))
+        bmp.recycle()
+
+        val gps = FloatArray(2)
+        @Suppress("DEPRECATION")
+        val lugar = if (exif?.getLatLong(gps) == true) lugarDe(gps[0].toDouble(), gps[1].toDouble()) else ""
+        val tomada = exif?.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)?.let {
+            try {
+                LocalDateTime.parse(it, DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss"))
+                    .format(DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale("es")))
+            } catch (e: Exception) { null }
+        } ?: ""
+        agregar(ctx, JSONObject().apply {
+            put("archivo", archivo)
+            put("lugar", lugar)
+            put("descripcion", tomada)
+            put("propia", true)
+        })
+        return true
+    }
+
+    private fun guardar(bmp: Bitmap, destino: File) {
+        destino.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+    }
+
+    // A 1920x1080: llenando (recorta lo que sobra) o completa sobre una copia suya desenfocada.
+    private fun componer(bmp: Bitmap, llenar: Boolean): Bitmap {
+        val lienzo = Bitmap.createBitmap(ANCHO, ALTO, Bitmap.Config.ARGB_8888)
+        val c = Canvas(lienzo)
+        val suave = Paint(Paint.FILTER_BITMAP_FLAG)
+        if (llenar) {
+            c.drawBitmap(bmp, null, cubrir(bmp, ANCHO, ALTO), suave)
+        } else {
+            val chica = Bitmap.createBitmap(48, 27, Bitmap.Config.ARGB_8888)
+            Canvas(chica).drawBitmap(bmp, null, cubrir(bmp, 48, 27), suave)
+            c.drawBitmap(chica, null, Rect(0, 0, ANCHO, ALTO), suave)
+            chica.recycle()
+            c.drawColor(0x73000000)
+            val escala = minOf(ANCHO.toFloat() / bmp.width, ALTO.toFloat() / bmp.height)
+            val w = (bmp.width * escala).toInt()
+            val h = (bmp.height * escala).toInt()
+            c.drawBitmap(bmp, null, Rect((ANCHO - w) / 2, (ALTO - h) / 2, (ANCHO + w) / 2, (ALTO + h) / 2), suave)
+        }
+        return lienzo
+    }
+
+    // Destino para dibujar la foto entera escalada hasta cubrir w x h, centrada (lo que sobra queda fuera).
+    private fun cubrir(bmp: Bitmap, w: Int, h: Int): Rect {
+        val escala = maxOf(w.toFloat() / bmp.width, h.toFloat() / bmp.height)
+        val sw = (bmp.width * escala).toInt()
+        val sh = (bmp.height * escala).toInt()
+        return Rect((w - sw) / 2, (h - sh) / 2, (w + sw) / 2, (h + sh) / 2)
     }
 
     private fun leerVetadas(ctx: Context): Set<String> {
@@ -213,9 +367,9 @@ object Fondos {
         val arr = JSONArray(f.readText())
         val todas = (0 until arr.length()).map { arr.getJSONObject(it) }
         val (validas, descartadas) = todas.partition { o ->
-            NO_NATURALEZA.none { it in o.optString("descripcion").lowercase() }
+            o.optBoolean("propia") || NO_NATURALEZA.none { it in o.optString("descripcion").lowercase() }
         }
-        val (favoritas, normales) = validas.partition { it.optBoolean("favorita") }
+        val (favoritas, normales) = validas.partition { it.optBoolean("favorita") || it.optBoolean("propia") }
         val sobran = (validas.size - MAXIMO).coerceAtLeast(0).coerceAtMost(normales.size)
         val quedan = JSONArray()
         (descartadas + normales.take(sobran)).forEach { File(dir(ctx), it.getString("archivo")).delete() }
