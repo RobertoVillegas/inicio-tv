@@ -22,8 +22,9 @@ import android.widget.TextView
 import java.util.concurrent.Executors
 
 /**
- * Las fotos subidas desde el celular: qué sale en pantalla (mezcla, solo mías o solo paisajes)
- * y, foto por foto, si entra en la rotación, si llena la pantalla, fijarla o borrarla.
+ * Las fotos subidas desde el celular y los paisajes guardados con ♡: qué sale en pantalla
+ * (mezcla, solo mías o solo paisajes) y, foto por foto, si entra en la rotación, si llena la
+ * pantalla, fijarla o borrarla.
  */
 class GaleriaActivity : Activity() {
     private lateinit var escena: Escena
@@ -98,11 +99,14 @@ class GaleriaActivity : Activity() {
     private fun llenar(enfocar: String?) {
         dibujarModos()
         trabajo.execute {
-            val fotos = Fondos.listar(this).filter { it.propia }.sortedByDescending { it.archivo.name }
-            val miniaturas = fotos.map { f ->
-                BitmapFactory.decodeFile(f.archivo.path, BitmapFactory.Options().apply { inSampleSize = 4 })
+            val todas = Fondos.listar(this)
+            val mias = todas.filter { it.propia }.sortedByDescending { it.archivo.name }
+            val guardadas = todas.filter { it.favorita && !it.propia }
+            val miniaturas = (mias + guardadas).associate { f ->
+                f.archivo.name to BitmapFactory.decodeFile(f.archivo.path, BitmapFactory.Options().apply { inSampleSize = 4 })
+                    ?.let { BitmapDrawable(resources, it) }
             }
-            principal.post { dibujarFotos(fotos, miniaturas.map { it?.let { b -> BitmapDrawable(resources, b) } }, enfocar) }
+            principal.post { dibujarFotos(mias, guardadas, miniaturas, enfocar) }
         }
     }
 
@@ -122,44 +126,64 @@ class GaleriaActivity : Activity() {
         }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(24) })
     }
 
-    private fun dibujarFotos(fotos: List<Foto>, miniaturas: List<BitmapDrawable?>, enfocar: String?) {
+    private val tarjetas = mutableListOf<Tarjeta>()
+
+    private fun dibujarFotos(mias: List<Foto>, guardadas: List<Foto>, miniaturas: Map<String, BitmapDrawable?>, enfocar: String?) {
         val fija = Fondos.fija(this)
-        val fuera = fotos.count { !it.incluida }
+        val fuera = mias.count { !it.incluida }
         resumen.text = when {
-            fotos.isEmpty() -> "Todavía no hay fotos tuyas. Usa “Agregar fotos” y elígelas desde el celular."
-            fuera == 0 -> "${fotos.size} ${if (fotos.size == 1) "foto" else "fotos"}. Elige una para cambiar cómo se ve o si sale."
-            else -> "${fotos.size} fotos, $fuera fuera de la rotación. Elige una para cambiar cómo se ve o si sale."
+            mias.isEmpty() -> "Todavía no hay fotos tuyas. Usa “Agregar fotos” y elígelas desde el celular."
+            fuera == 0 -> "${mias.size} ${if (mias.size == 1) "foto tuya" else "fotos tuyas"}. Elige una para cambiar cómo se ve o si sale."
+            else -> "${mias.size} fotos tuyas, $fuera fuera de la rotación. Elige una para cambiar cómo se ve o si sale."
         }
         val volverARejilla = enfocar != null
         rejilla.removeAllViews()
-        fotos.forEachIndexed { i, foto ->
+        tarjetas.clear()
+
+        fun seccion(fotos: List<Foto>) = fotos.forEachIndexed { i, foto ->
             val nombre = buildString {
                 if (foto.archivo.name == fija) append("◎ ")
                 if (!foto.incluida) append("Fuera · ")
                 append(foto.lugar.ifEmpty { foto.descripcion.ifEmpty { "Foto" } })
             }
-            val t = Tarjeta(this, App(nombre, miniaturas[i], Intent()), ancho, alto)
+            val t = Tarjeta(this, App(nombre, miniaturas[foto.archivo.name], Intent()), ancho, alto)
             t.alpha = if (foto.incluida) 1f else 0.4f
             t.setOnClickListener { opciones(foto) }
             rejilla.addView(t, GridLayout.LayoutParams().apply {
                 width = dp(ancho)
                 setMargins(0, 0, if (i % COLUMNAS == COLUMNAS - 1) 0 else dp(HUECO), dp(44))
             })
+            tarjetas += t
             if (foto.archivo.name == enfocar) t.requestFocus()
         }
-        // Si la foto enfocada ya no está (se borró), el foco pasa a la que quedó en su lugar.
+        seccion(mias)
+        if (guardadas.isNotEmpty()) {
+            val titulo = "Paisajes guardados   ·   ${guardadas.size}   ·   salen el doble y nunca se borran"
+            rejilla.addView(texto(titulo, 17f, "sans-serif-medium").apply { alpha = 0.85f },
+                GridLayout.LayoutParams(GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(0, COLUMNAS)).apply {
+                    setMargins(0, if (mias.isEmpty()) 0 else dp(8), 0, dp(20))
+                })
+            seccion(guardadas)
+        }
+        // Si la foto enfocada ya no está (se borró o se quitó de guardadas), el foco pasa a la que quedó en su lugar.
         if (!rejilla.hasFocus() && (volverARejilla || !modos.hasFocus())) {
-            val i = enfocadaAntes.coerceAtMost(rejilla.childCount - 1)
-            (rejilla.getChildAt(i) ?: modos.getChildAt(0))?.requestFocus()
+            (tarjetas.getOrNull(enfocadaAntes.coerceAtMost(tarjetas.size - 1)) ?: modos.getChildAt(0))?.requestFocus()
         }
     }
 
     private var enfocadaAntes = 0
 
     private fun opciones(foto: Foto) {
-        enfocadaAntes = (0 until rejilla.childCount).firstOrNull { rejilla.getChildAt(it).hasFocus() } ?: 0
+        enfocadaAntes = tarjetas.indexOfFirst { it.hasFocus() }.coerceAtLeast(0)
         val fija = Fondos.fija(this) == foto.archivo.name
-        val opciones = buildList<Pair<String, () -> Unit>> {
+        val opciones = if (!foto.propia) buildList<Pair<String, () -> Unit>> {
+            add("♥  Quitar de guardadas" to { Fondos.marcarFavorita(this@GaleriaActivity, foto, false) })
+            add((if (fija) "◎  Volver a cambiar de foto" else "◎  Dejar siempre esta foto") to {
+                Fondos.ponerFija(this@GaleriaActivity, if (fija) null else foto)
+            })
+            add("✕  No volver a mostrar" to { Fondos.ocultar(this@GaleriaActivity, foto) })
+            add("Cancelar" to {})
+        } else buildList<Pair<String, () -> Unit>> {
             add((if (foto.incluida) "–  Sacar de la rotación" else "+  Volver a la rotación") to {
                 Fondos.ponerIncluida(this@GaleriaActivity, foto, !foto.incluida)
             })
@@ -173,7 +197,7 @@ class GaleriaActivity : Activity() {
             add("Cancelar" to {})
         }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(foto.lugar.ifEmpty { foto.descripcion.ifEmpty { "Tu foto" } })
+            .setTitle(foto.lugar.ifEmpty { if (foto.propia) foto.descripcion.ifEmpty { "Tu foto" } else "Paisaje guardado" })
             .setItems(opciones.map { it.first }.toTypedArray()) { _, i ->
                 if (i == opciones.size - 1) return@setItems
                 trabajo.execute {
