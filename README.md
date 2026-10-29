@@ -1,8 +1,10 @@
-# tcl-tv
+# Inicio
 
-**A quiet, ad-free home screen for a TCL Google TV, plus a reversible debloat.**
+**A quiet, ad-free home screen for Google TV and Android TV.**
 
-Google TV's home screen opens on a full-width ad (the "hero") with a row of sponsored picks under it, and there's no setting to switch them off. This repo swaps the home screen for a small one I wrote, called **Inicio**: a slowly drifting nature photograph, the time, the local weather, where the photo was taken, and only the apps the household actually uses. Inicio also runs as the TV's screensaver, and the TV's sleep timers are set so the panel is never left on a still image.
+Google TV's home screen opens on a full-width ad (the "hero") with a row of sponsored picks under it, and there's no setting to switch them off. **Inicio** is a small home screen I wrote to replace it: a slowly drifting nature photograph, the time, the local weather, where the photo was taken, and only the apps the household actually uses. Inicio also runs as the TV's screensaver, and the TV's sleep timers are set so the panel is never left on a still image. You can add your own photos from your phone with a QR code.
+
+It runs on Android 9 or later. The setup in this repo is for the TCL Google TV in my living room, which also got a reversible debloat. The home-screen scripts detect the launchers on any Google TV or Android TV.
 
 | Before: stock Google TV | After: Inicio |
 |---|---|
@@ -151,7 +153,7 @@ To undo:
 
 ### Installing a prebuilt APK
 
-Every [release](https://github.com/RobertoVillegas/tcl-tv/releases) has a signed `inicio-vX.Y.Z.apk`, built by GitHub Actions ([`release.yml`](.github/workflows/release.yml)), so you don't need the Android SDK:
+Every [release](https://github.com/RobertoVillegas/inicio-tv/releases) has a signed `inicio-vX.Y.Z.apk`, built by GitHub Actions ([`release.yml`](.github/workflows/release.yml)), so you don't need the Android SDK:
 
 ```bash
 adb install -r inicio-v0.2.0.apk
@@ -159,7 +161,7 @@ adb install -r inicio-v0.2.0.apk
 
 Then run the `adb shell` lines in [`instalar-inicio.sh`](instalar-inicio.sh): the auto-start permission, the music listener, the night timer and the screensaver.
 
-**From the TV, with no computer.** In the [Downloader](https://www.aftvnews.com/downloader/) app, enter code **`4993644`**. It always fetches the latest release ([`releases/latest/download/inicio.apk`](https://github.com/RobertoVillegas/tcl-tv/releases/latest/download/inicio.apk)). This installs Inicio as a regular app you can open. Making it the home screen, and the permissions above, still need ADB, because Google TV has no setting for choosing another home screen.
+**From the TV, with no computer.** In the [Downloader](https://www.aftvnews.com/downloader/) app, enter code **`4993644`**. It always fetches the latest release ([`releases/latest/download/inicio.apk`](https://github.com/RobertoVillegas/inicio-tv/releases/latest/download/inicio.apk)). This installs Inicio as a regular app you can open. Making it the home screen, and the permissions above, still need ADB, because Google TV has no setting for choosing another home screen.
 
 ### Building it yourself
 

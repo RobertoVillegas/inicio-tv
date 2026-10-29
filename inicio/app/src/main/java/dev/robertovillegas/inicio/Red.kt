@@ -6,7 +6,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 // Wikimedia y Nominatim piden un User-Agent que identifique la app.
-private const val USER_AGENT = "InicioTV/0.1 (https://github.com/RobertoVillegas/tcl-tv)"
+private const val USER_AGENT = "InicioTV/0.4 (https://github.com/RobertoVillegas/inicio-tv)"
 
 object Red {
     private fun abrir(url: String): HttpURLConnection =

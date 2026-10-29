@@ -14,7 +14,7 @@ import java.io.File
  * Para poder abrir el instalador hace falta `appops set dev.robertovillegas.inicio REQUEST_INSTALL_PACKAGES allow`.
  */
 object Actualizacion {
-    private const val ULTIMO = "https://api.github.com/repos/RobertoVillegas/tcl-tv/releases/latest"
+    private const val ULTIMO = "https://api.github.com/repos/RobertoVillegas/inicio-tv/releases/latest"
 
     data class Version(val nombre: String, val apk: String)
 
