@@ -22,13 +22,12 @@ Everything here was done over ADB from a Mac, with no root, and it's all reversi
 
 ```
 inicio/                  Android app: home screen + screensaver (Kotlin, no dependencies, ~100 KB)
-fase1-desactivar.txt     The 22 packages disabled in the debloat
-fase2-desactivar.txt     Google TV's launcher and setup app, disabled once Inicio is the home screen
+fase1-desactivar.txt     The packages disabled in the debloat
 aplicar.sh               Disable every package in a list
 instalar-inicio.sh       Build + install Inicio, make it the screensaver, set sleep timers
-poner-inicio.sh          Make Inicio the home screen and disable Google TV's launcher
+poner-inicio.sh          Make Inicio the home screen; disables the others it finds and notes them on the TV
 instalar-smarttube.sh    Install or update SmartTube from its GitHub releases
-rescate-launcher.sh      EMERGENCY: no home screen? Bring Google TV's back and reboot
+rescate-launcher.sh      Give the factory home screen back (emergency or for good) and reboot
 restaurar-todo.sh        Undo everything and reboot
 restaurar-tv.sh          The same undo, run on the TV itself (also stored at /sdcard/restaurar-tv.sh)
 respaldo-original/       Factory package state captured before any change
@@ -137,12 +136,16 @@ Then:
 ./poner-inicio.sh                   # make Inicio the home screen
 ```
 
-**Going back to Google TV.** Its launcher is disabled, so it can't be opened from Inicio. Run `./rescate-launcher.sh` from a computer: it re-enables the launcher and the setup app, hands the Home button back, and reboots.
+The scripts talk to `192.168.0.122` unless you set `TV=<ip>`. `poner-inicio.sh` and `rescate-launcher.sh` also take the IP as their first argument (`./poner-inicio.sh 192.168.1.50`), and with `SIMULAR=1` they print what they would do without changing anything.
+
+**Making Inicio the home screen.** `poner-inicio.sh` works on Google TV and on plain Android TV. It doesn't hard-code launcher names. It asks Android which apps can be the home screen, shows them, and after you confirm, hands the Home button to Inicio and disables the others. Two are never touched: Settings' fallback home and Android's chooser. It writes what it disabled, plus the original home screen, to `/sdcard/inicio-launchers.txt` on the TV. On a Fire TV it stops, because Amazon doesn't allow another home screen.
+
+**Going back.** The factory launcher is disabled, so it can't be opened from Inicio. Run `./rescate-launcher.sh` from a computer. It re-enables exactly what `poner-inicio.sh` noted and hands the Home button back to the original home screen. If there's no note, it tries Google TV's, Android TV's and the older Leanback launcher. Then it reboots.
 
 To undo:
 
 ```bash
-./rescate-launcher.sh               # home screen broken? back to Google TV
+./rescate-launcher.sh               # back to the factory home screen
 ./restaurar-todo.sh                 # undo everything
 ```
 
@@ -174,7 +177,7 @@ To cut a release, push a tag such as `v0.2.0`. The workflow needs three reposito
 
 ## Gotchas
 
-- **Google's setup app hijacks the Home button.** With Google TV's launcher disabled, `com.google.android.tungsten.setupwraith/.RecoveryActivity` outranks any custom home screen, even when Inicio holds the `HOME` role. Shell can't disable a system app's single component, so `poner-inicio.sh` disables the whole setup app (setup is long done), and the rescue script turns it back on.
+- **Google's setup app hijacks the Home button.** With Google TV's launcher disabled, `com.google.android.tungsten.setupwraith/.RecoveryActivity` outranks any custom home screen, even when Inicio holds the `HOME` role. Shell can't disable a system app's single component, so `poner-inicio.sh` disables the whole setup app along with the launcher (setup is long done), and the rescue script turns it back on.
 - **TCL blocks third-party services from starting on their own.** The log reads `TclAppBoot: callee_does't_have_OP_AUTO_START_permission`, and a custom screensaver closes the instant it opens. The fix is `cmd appops set <package> APP_AUTO_START allow`; `instalar-inicio.sh` runs it.
 - **Wait about 15 s after enabling or disabling packages before you reboot.** If you reboot sooner, PackageManager may not have saved the change, and it gets reverted.
 - **If you see `unauthorized` in `adb devices`,** accept the prompt on the TV and tick *Always allow from this computer*.
@@ -186,7 +189,7 @@ To cut a release, push a tag such as `v0.2.0`. The workflow needs three reposito
 
 The idea works on any Android TV or Google TV, because Android lets an app register as the home screen. To adapt it:
 
-1. Check your ABI with `adb shell getprop ro.product.cpu.abi`.
+1. Inicio is plain Kotlin with no native code, so it runs on any CPU with Android 9 or later. Fire TV can run it as an app but won't let it be the home screen.
 2. Edit `FAVORITAS` and `OCULTAS` in `Apps.kt`.
 3. Point `Apps.entradas()` at your vendor's TV app. Find it with `adb shell cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER`.
 4. Change the package lists before running `aplicar.sh`. List your own packages first; the ones here are TCL-specific.

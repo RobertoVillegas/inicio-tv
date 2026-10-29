@@ -1,5 +1,5 @@
 #!/bin/bash
-# Uso: ./aplicar.sh fase1-desactivar.txt   (o fase2-desactivar.txt)
+# Uso: ./aplicar.sh fase1-desactivar.txt
 set -u
 TV="${TV:-192.168.0.122:5555}"
 adb connect "$TV" >/dev/null 2>&1

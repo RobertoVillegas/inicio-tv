@@ -23,3 +23,6 @@ com.tcl.messagebox
 com.tcl.ocean.instructions
 com.tcl.repairguide
 com.tcl.waterfall.overseas
+
+# Google Play Películas, ya sin servicio
+com.google.android.videos
