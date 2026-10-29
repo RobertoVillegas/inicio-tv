@@ -20,7 +20,10 @@ class PaisajesDream : DreamService() {
 
     private val cadaMinuto = object : Runnable {
         override fun run() {
-            escena.ponerNoche(Noche.esDeNoche())
+            // El protector también cambia el apagado: la noche puede caer con la TV ya en reposo.
+            val noche = Noche.esDeNoche()
+            escena.ponerNoche(noche)
+            trabajo.execute { Noche.ajustarApagado(this@PaisajesDream, noche) }
             principal.postDelayed(this, 60_000L)
         }
     }
