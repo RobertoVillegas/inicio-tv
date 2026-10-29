@@ -78,13 +78,13 @@ class HomeActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             clipChildren = false
             clipToPadding = false
-            setPadding(escena.dp(48), escena.dp(14), escena.dp(48), escena.dp(44))
+            setPadding(escena.dp(40), escena.dp(14), escena.dp(40), escena.dp(44))
         }
         // Al enfocar una tarjeta el dock deja aire a los lados. En la primera y la última eso
         // alcanza la orilla, así que se ve completa (con su margen) sin otro clic hacia el borde.
         // El desplazamiento lo hace el resorte, no el scroll de Android, que dura siempre lo mismo
         // y se corta al presionar seguido.
-        val aire = escena.dp(72)
+        val aire = escena.dp(40)
         dock = object : HorizontalScrollView(this) {
             override fun computeScrollDeltaToGetChildRectOnScreen(rect: Rect): Int {
                 val total = getChildAt(0)?.width ?: return 0

@@ -8,10 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -22,6 +20,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewOutlineProvider
+import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
@@ -130,14 +129,18 @@ object Apps {
  */
 class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(ctx) {
     private val marco = FrameLayout(ctx)
-    private val filo = Filo(ctx, dp(12).toFloat(), dp(1).toFloat() * 1.5f)
-    private val reflejo = View(ctx)
+    private val filo = Filo(ctx, dp(12).toFloat())
     private val nombre = TextView(ctx)
     private var mantenida = false
     private var temblor: ObjectAnimator? = null
 
     /** Qué hacer al dejar presionado OK sobre la tarjeta. */
     var alMantener: (() -> Unit)? = null
+
+    private companion object {
+        // Cuánto crece al enfocarla: lo de la app de Apple TV con sus tarjetas chicas.
+        const val ESCALA = 1.1f
+    }
 
     init {
         isFocusable = true
@@ -151,6 +154,7 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
             outlineProvider = ViewOutlineProvider.BACKGROUND
             outlineSpotShadowColor = Color.BLACK
             outlineAmbientShadowColor = Color.BLACK
+            translationZ = dp(2).toFloat()
             cameraDistance = 8000 * resources.displayMetrics.density
         }
         val img = ImageView(ctx).apply {
@@ -161,15 +165,6 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
         }
         marco.addView(img, LayoutParams(-1, -1))
 
-        // Luz suave desde arriba mientras la tarjeta tiene el foco.
-        reflejo.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0x30FFFFFF, 0x00FFFFFF, 0x00FFFFFF),
-        )
-        reflejo.alpha = 0f
-        marco.addView(reflejo, LayoutParams(-1, -1))
-
-        filo.alpha = 0.45f
         marco.addView(filo, LayoutParams(-1, -1))
         addView(marco, LayoutParams(dp(ancho), dp(alto)))
 
@@ -190,21 +185,18 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
     }
 
     private fun enfocar() {
-        marco.animate().scaleX(1.12f).scaleY(1.12f).translationZ(dp(18).toFloat())
+        // Como en la app de Apple TV: crece rápido y sin rebote, y al soltar el foco regresa despacio.
+        marco.animate().scaleX(ESCALA).scaleY(ESCALA).translationZ(dp(18).toFloat())
             .rotationX(0f).rotationY(0f)
-            .setInterpolator(OvershootInterpolator(1.6f)).setDuration(320).start()
-        reflejo.animate().alpha(1f).setDuration(200).start()
+            .setInterpolator(AccelerateInterpolator()).setDuration(85).start()
         nombre.translationY = dp(-6).toFloat()
         nombre.animate().alpha(1f).translationY(0f).setDuration(220).start()
-        filo.animate().alpha(1f).setDuration(200).start()
     }
 
     private fun desenfocar() {
-        marco.animate().scaleX(1f).scaleY(1f).translationZ(0f).rotationX(0f).rotationY(0f)
-            .setInterpolator(DecelerateInterpolator()).setDuration(200).start()
-        reflejo.animate().alpha(0f).setDuration(150).start()
+        marco.animate().scaleX(1f).scaleY(1f).translationZ(dp(2).toFloat()).rotationX(0f).rotationY(0f)
+            .setInterpolator(DecelerateInterpolator()).setDuration(230).start()
         nombre.animate().alpha(0f).setDuration(120).start()
-        filo.animate().alpha(0.45f).setDuration(200).start()
     }
 
     private fun tecla(code: Int, ev: KeyEvent): Boolean {
@@ -212,20 +204,22 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
         if (centro && ev.action == KeyEvent.ACTION_DOWN) {
             if (ev.repeatCount == 0) {
                 mantenida = false
-                marco.animate().scaleX(1.05f).scaleY(1.05f).setInterpolator(DecelerateInterpolator())
-                    .setDuration(90).start()
+                // Al presionar pierde la mitad de lo que creció, y al soltar lo recupera.
+                val medio = 1f + (ESCALA - 1f) / 2
+                marco.animate().scaleX(medio).scaleY(medio).setInterpolator(DecelerateInterpolator())
+                    .setDuration(80).start()
             } else if (ev.isLongPress && !mantenida && alMantener != null) {
                 mantenida = true
-                marco.animate().scaleX(1.12f).scaleY(1.12f).setInterpolator(OvershootInterpolator(2f))
-                    .setDuration(220).start()
+                marco.animate().scaleX(ESCALA).scaleY(ESCALA).setInterpolator(AccelerateInterpolator())
+                    .setDuration(80).start()
                 alMantener?.invoke()
             }
             return true
         }
         if (centro && ev.action == KeyEvent.ACTION_UP) {
             if (!mantenida) {
-                marco.animate().scaleX(1.12f).scaleY(1.12f).setInterpolator(OvershootInterpolator(2f))
-                    .setDuration(220).start()
+                marco.animate().scaleX(ESCALA).scaleY(ESCALA).setInterpolator(AccelerateInterpolator())
+                    .setDuration(80).start()
                 performClick()
             }
             mantenida = false
@@ -273,19 +267,16 @@ class Tarjeta(ctx: Context, val app: App, ancho: Int, alto: Int) : FrameLayout(c
     }
 }
 
-/**
- * El borde de una tarjeta: una línea fina de luz que es más clara arriba y casi desaparece abajo,
- * como el canto de un vidrio iluminado desde arriba.
- */
-private class Filo(ctx: Context, private val radio: Float, private val grosor: Float) : View(ctx) {
-    private val pincel = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = grosor }
+/** El borde de una tarjeta: una línea de un pixel, blanca al 8 %, que no cambia con el foco. */
+private class Filo(ctx: Context, private val radio: Float) : View(ctx) {
+    private val pincel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1f
+        color = 0x14FFFFFF
+    }
     private val caja = RectF()
 
-    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        pincel.shader = LinearGradient(0f, 0f, 0f, h.toFloat(), intArrayOf(0x73FFFFFF, 0x1AFFFFFF, 0x08FFFFFF),
-            floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
-        caja.set(grosor / 2, grosor / 2, w - grosor / 2, h - grosor / 2)
-    }
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) = caja.set(0.5f, 0.5f, w - 0.5f, h - 0.5f)
 
-    override fun onDraw(c: Canvas) = c.drawRoundRect(caja, radio - grosor / 2, radio - grosor / 2, pincel)
+    override fun onDraw(c: Canvas) = c.drawRoundRect(caja, radio, radio, pincel)
 }
