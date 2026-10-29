@@ -44,6 +44,9 @@ echo "Pantalla de inicio: $anterior"
 hacer cmd package set-home-activity "$anterior"
 hacer cmd role add-role-holder --user 0 android.app.role.HOME "${anterior%%/*}"
 hacer rm -f "$REGISTRO"
+# Sin esto, Inicio notaría al arrancar que ya no es la pantalla de inicio y se abriría a avisar.
+# Como app normal deja de mostrar lo que está sonando; instalar-inicio.sh lo vuelve a encender.
+hacer cmd notification disallow_listener dev.robertovillegas.inicio/dev.robertovillegas.inicio.Escucha
 [ "${SIMULAR:-0}" = 1 ] && exit 0
 
 echo "Esperando 15 s a que Android guarde el cambio y reiniciando la TV…"

@@ -13,11 +13,14 @@ import android.service.notification.NotificationListenerService
 import android.util.Log
 
 /**
- * No hace nada por sí mismo: Android solo deja leer las sesiones de música de otras apps
+ * No lee notificaciones: Android solo deja leer las sesiones de música de otras apps
  * a quien tenga un NotificationListenerService habilitado. Se habilita por ADB con
  * `cmd notification allow_listener dev.robertovillegas.inicio/.Escucha`.
+ * Como Android lo vuelve a conectar después de cada arranque, de paso despierta a Guardia.
  */
-class Escucha : NotificationListenerService()
+class Escucha : NotificationListenerService() {
+    override fun onListenerConnected() = Guardia.revisar(this)
+}
 
 data class Cancion(val titulo: String, val artista: String, val portada: Bitmap?, val app: String)
 

@@ -2,12 +2,14 @@ package dev.robertovillegas.inicio
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
+import android.media.tv.TvInputManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -33,6 +35,8 @@ class HomeActivity : Activity() {
     private val trabajo = Executors.newSingleThreadExecutor()
     private var modoCuadro = false
     private var versionDock = -1
+    private var enPantalla = false
+    private var entradas: TvInputManager.TvInputCallback? = null
 
     // Mientras se mueve una app dentro del dock: cuál es y en qué posición va.
     private var moviendo: Tarjeta? = null
@@ -117,6 +121,22 @@ class HomeActivity : Activity() {
         sonando = Sonando(this) { escena.ponerCancion(it) }
         acomodar()
         principal.post(refrescarFondos)
+        // Al conectar o desconectar algo en un HDMI, su tarjeta aparece o desaparece del dock.
+        entradas = Entradas.seguir(this) {
+            if (enPantalla && moviendo == null) llenarDock() else versionDock = -1
+        }
+        avisarSiPerdioHome(intent)
+    }
+
+    // Lo abre Guardia cuando una actualización le regresó el botón Home a Google TV.
+    private fun avisarSiPerdioHome(intent: Intent) {
+        if (!intent.getBooleanExtra(Guardia.AVISO, false)) return
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Google TV volvió a ser la pantalla de inicio")
+            .setMessage("Seguramente se actualizó la TV. Para que el botón Home vuelva a abrir Inicio, " +
+                "corre ./revisar.sh desde la computadora con ARREGLAR=1.")
+            .setPositiveButton("Entendido", null)
+            .show()
     }
 
     private fun boton(texto: String, accion: () -> Unit) = TextView(this).apply {
@@ -286,8 +306,30 @@ class HomeActivity : Activity() {
         trabajo.execute { Noche.ajustarApagado(this, noche) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        enPantalla = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        enPantalla = false
+    }
+
+    // Las dos fotos del fondo pesan unos 16 MB. Se sueltan solo si Android pide memoria mientras
+    // otra app está al frente; con el inicio en pantalla nunca, para no dejar un hueco negro.
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (enPantalla) return
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
+            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+        ) escena.soltarFotos()
+    }
+
     override fun onResume() {
         super.onResume()
+        if (!intent.getBooleanExtra(Guardia.AVISO, false)) Guardia.anotar(this)
         if (versionDock != Dock.version) llenarDock()
         escena.iniciar(180_000L)
         sonando.iniciar()
@@ -309,6 +351,7 @@ class HomeActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         principal.removeCallbacksAndMessages(null)
+        Entradas.dejarDeSeguir(this, entradas)
         escena.liberar()
         trabajo.shutdownNow()
     }
@@ -359,6 +402,8 @@ class HomeActivity : Activity() {
     // Si ya estamos en inicio y presionan Home, regresa el foco a la primera app.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        avisarSiPerdioHome(intent)
         if (Intent.ACTION_MAIN == intent.action) {
             terminarDeMover()
             salirModoCuadro()

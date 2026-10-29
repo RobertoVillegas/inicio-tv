@@ -15,10 +15,16 @@ import android.graphics.drawable.Drawable
 import android.media.tv.TvContract
 import android.media.tv.TvInputInfo
 import android.media.tv.TvInputManager
+import android.os.Handler
+import android.os.Looper
 
 /**
- * Accesos directos a cada entrada HDMI. El nombre es el que se le ponga en
+ * Accesos directos a cada entrada HDMI con algo encendido. El nombre es el que se le ponga en
  * Ajustes > Entradas de la TV (por ejemplo "Xbox"); si no tiene, queda "HDMI 1", "HDMI 2"...
+ *
+ * Solo cuentan las que Android reporta conectadas. Esta TCL reporta "en espera"
+ * (INPUT_STATE_CONNECTED_STANDBY) también en un puerto sin nada, o con un cable suelto, así que
+ * esas se esconden igual que las desconectadas. Sin ninguna, el dock muestra un solo acceso a Entradas.
  */
 object Entradas {
     fun hdmi(ctx: Context): List<App> {
@@ -26,11 +32,30 @@ object Entradas {
         return tim.tvInputList
             .filter { it.type == TvInputInfo.TYPE_HDMI && it.parentId == null && !it.isHidden(ctx) }
             .sortedBy { it.id }
-            .mapIndexed { i, info ->
+            .mapIndexed { i, info -> i to info }
+            .filter { (_, info) -> tim.getInputState(info.id) == TvInputManager.INPUT_STATE_CONNECTED }
+            .map { (i, info) ->
                 val nombre = info.loadCustomLabel(ctx)?.toString()?.takeIf { it.isNotBlank() }
                     ?: "HDMI ${i + 1}"
                 App(nombre, tarjeta(ctx, nombre), abrir(info.id))
             }
+    }
+
+    /** Avisa cuando se conecta o desconecta algo, para redibujar el dock. */
+    fun seguir(ctx: Context, alCambiar: () -> Unit): TvInputManager.TvInputCallback? {
+        val tim = ctx.getSystemService(TvInputManager::class.java) ?: return null
+        val callback = object : TvInputManager.TvInputCallback() {
+            override fun onInputStateChanged(inputId: String, state: Int) = alCambiar()
+            override fun onInputAdded(inputId: String) = alCambiar()
+            override fun onInputRemoved(inputId: String) = alCambiar()
+        }
+        tim.registerCallback(callback, Handler(Looper.getMainLooper()))
+        return callback
+    }
+
+    fun dejarDeSeguir(ctx: Context, callback: TvInputManager.TvInputCallback?) {
+        callback ?: return
+        ctx.getSystemService(TvInputManager::class.java)?.unregisterCallback(callback)
     }
 
     private fun abrir(id: String) = Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(id))

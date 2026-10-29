@@ -197,6 +197,14 @@ class Escena(ctx: Context) : FrameLayout(ctx) {
         trabajo.shutdownNow()
     }
 
+    /** Suelta las dos fotos de la memoria. Al volver a iniciar, entra la siguiente desde negro. */
+    fun soltarFotos() {
+        detener()
+        capas.forEach { it.setImageDrawable(null); it.alpha = 0f }
+        // Los pixeles viven fuera del heap de Java y Android los devuelve hasta que pasa el recolector.
+        Runtime.getRuntime().gc()
+    }
+
     private val tic = Runnable { avanzar() }
 
     /** Pasa a la siguiente foto ya, sin esperar el intervalo. */

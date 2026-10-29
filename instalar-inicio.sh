@@ -4,10 +4,13 @@
 # No la pone como pantalla de inicio: eso lo hace poner-inicio.sh.
 #
 # Uso:  ./instalar-inicio.sh [ip-de-la-tv]        COMPILAR=1 ./instalar-inicio.sh  para compilar desde el código
+#       SIN_APK=1 ./instalar-inicio.sh           solo los permisos y tiempos, sin reinstalar (lo usa revisar.sh)
 set -eu
 TV="${1:-${TV:-192.168.0.122}}"
 [[ "$TV" == *:* ]] || TV="$TV:5555"
-if [ "${COMPILAR:-0}" = 1 ]; then
+if [ "${SIN_APK:-0}" = 1 ]; then
+  apk=""
+elif [ "${COMPILAR:-0}" = 1 ]; then
   (cd "$(dirname "$0")/inicio" && ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ./gradlew assembleRelease -q)
   apk="$(dirname "$0")/inicio/app/build/outputs/apk/release/app-release.apk"
 else
@@ -16,7 +19,7 @@ else
 fi
 adb connect "$TV" >/dev/null 2>&1
 adb -s "$TV" get-state >/dev/null 2>&1 || { echo "No conecta con la TV ($TV). ¿Aceptaste la depuración en la pantalla?"; exit 1; }
-adb -s "$TV" install -r "$apk"
+[ -z "$apk" ] || adb -s "$TV" install -r "$apk"
 adb -s "$TV" shell '
 # TCL bloquea que las apps de terceros arranquen servicios solas; sin esto el protector no abre.
 # En otras marcas ese permiso no existe y el comando solo avisa.
@@ -34,4 +37,4 @@ settings put system screen_off_timeout 300000     # protector a los 5 min sin us
 settings put secure sleep_timeout 1139000         # pantalla apagada a los ~19 min de dia; Inicio la baja a 10 de noche
 settings put secure attentive_timeout 14400000    # apagado tras 4 h sin tocar el control, aunque haya video
 '
-echo "Inicio instalado y configurado como protector de pantalla."
+echo "Inicio ${apk:+instalado y }configurado como protector de pantalla."
