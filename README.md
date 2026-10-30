@@ -36,6 +36,7 @@ Google TV's home screen opens on a full-width ad with a row of sponsored picks u
 - **Kind to the panel.** Photos always zoom and pan slowly, the screensaver moves the clock between corners, and after the real sunset everything dims and the TV turns off sooner.
 - **Picture-frame mode.** After 45 s without a key press the dock slides away and only the photo is left.
 - **Updates itself.** When a new release is out, the `•••` button shows an arrow, and installing it takes one confirmation on the remote.
+- **The remote's app buttons.** Netflix, YouTube, Prime Video and Apple TV open their apps from anywhere, as they did with Google TV's home screen.
 - **Notices a firmware update.** If an update hands the Home button back to Google TV, Inicio opens on the next boot and says how to fix it.
 - **Light.** It uses about 45 MB of memory, against 126 MB for Google TV's home screen on the same TV, and lets go of its photos when another app needs the room ([measurements](docs/tcl-living-room.md#memory)).
 
