@@ -45,6 +45,9 @@ run rm -f "$RECORD"
 # Otherwise Inicio would notice at boot that it's no longer home and open itself to warn about it.
 # As a plain app it stops showing what's playing; install-inicio.sh turns that back on.
 run cmd notification disallow_listener dev.robertovillegas.inicio/dev.robertovillegas.inicio.MediaListener
+# Google's home screen answers the remote's app buttons again.
+run "a=\$(settings get secure enabled_accessibility_services | tr : '\\n' | grep -v RemoteButtons | paste -sd: -)
+  if [ -n \"\$a\" ]; then settings put secure enabled_accessibility_services \$a; else settings delete secure enabled_accessibility_services; fi"
 [ "${DRY_RUN:-0}" = 1 ] && exit 0
 
 echo "Waiting 15 s for Android to save the change, then rebooting the TV…"
