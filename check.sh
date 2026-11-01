@@ -1,7 +1,8 @@
 #!/bin/bash
 # Checks that the TV is still how the scripts left it. Mostly for after a firmware update, which re-enables
 # disabled packages and hands the Home button back to Google TV. Checks debloat-list.txt and what
-# set-home.sh disabled, that Inicio is the home screen, and its permissions. FIX=1 puts back what's off.
+# set-home.sh disabled, TCL's diagnostic data, that Inicio is the home screen, and its permissions.
+# FIX=1 puts back what's off.
 #
 # Usage:  ./check.sh [tv-ip]          FIX=1 ./check.sh
 # Exits 0 when everything is in order (or got fixed), 1 when something is off, 2 when the TV is unreachable.
@@ -33,6 +34,10 @@ if [ -n "$reenabled" ]; then
 else
   good "all $(grep -c . <<<"$wanted") on the list are still off (or gone)"
 fi
+
+# debloat.sh turns it off; other brands don't have the setting.
+diagnostics=$(read_tv settings get global tcl_diagnostic_status)
+if [ "$diagnostics" = 1 ]; then bad "TCL's diagnostic data is being sent again"; else good "TCL's diagnostic data is off"; fi
 
 echo "Home screen"
 home=$(read_tv cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1)
@@ -68,6 +73,7 @@ echo "Fixing…"
 for p in $reenabled; do
   printf '  %-45s ' "$p"; read_tv pm disable-user --user 0 "$p" | tail -1
 done
+[ "$diagnostics" != 1 ] || { read_tv settings put global tcl_diagnostic_status 0; echo "  TCL's diagnostic data turned off"; }
 [ "$permissions_off" = 0 ] || NO_APK=1 ./install-inicio.sh "$TV"
 if [[ "$home" != "$INICIO/"* ]] || [ -n "$others" ]; then
   ./set-home.sh "$TV" </dev/null
