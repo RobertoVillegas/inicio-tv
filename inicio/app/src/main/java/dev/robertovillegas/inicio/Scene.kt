@@ -60,6 +60,7 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
 
     var current: Photo? = null
         private set
+    private var shownAt = 0L
     var onPhotoChange: ((Photo) -> Unit)? = null
 
     val info = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
@@ -188,7 +189,7 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
         running = true
         worker.execute {
             photos = Photos.rotation(context)
-            main.post { advance() }
+            main.post { resume() }
             // With few photos stored, download more and add them to the rotation.
             if (Photos.list(context).size < 12) {
                 Photos.refresh(context)
@@ -215,6 +216,17 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
         layers.forEach { it.setImageDrawable(null); it.alpha = 0f }
         // The pixels live outside the Java heap and only go back to the system after a GC.
         Runtime.getRuntime().gc()
+    }
+
+    // Back after a moment away, say an app that closed at once: the same photo carries on.
+    private fun resume() {
+        if (!running) return
+        val shownFor = SystemClock.uptimeMillis() - shownAt
+        if (layers[front].drawable == null || shownFor >= interval) return advance()
+        layers[front].alpha = 1f
+        layers[1 - front].apply { alpha = 0f; setImageDrawable(null) }
+        main.postDelayed(tick, interval - shownFor)
+        driftStep.run()
     }
 
     private val tick = Runnable { advance() }
@@ -277,6 +289,7 @@ class Scene(ctx: Context) : FrameLayout(ctx) {
         leaving.animate().alpha(0f).setDuration(2500).withEndAction { leaving.setImageDrawable(null) }.start()
 
         current = photo
+        shownAt = SystemClock.uptimeMillis()
         place.text = photo.place
         place.visibility = if (photo.place.isEmpty()) GONE else VISIBLE
         description.text = photo.description

@@ -47,6 +47,8 @@ read_tv settings get secure enabled_notification_listeners | grep -q "$INICIO" &
   { bad "can't read what's playing (or guard the Home button)"; permissions_off=1; }
 read_tv dumpsys package "$INICIO" | grep -q 'WRITE_SECURE_SETTINGS: granted=true' && good "sets the night sleep timer" ||
   { bad "can't set the night sleep timer"; permissions_off=1; }
+read_tv settings get secure enabled_accessibility_services | grep -q "$INICIO" && good "opens apps with the remote's buttons" ||
+  { bad "the remote's app buttons do nothing"; permissions_off=1; }
 read_tv settings get secure screensaver_components | grep -q "$INICIO" && good "Landscapes is the screensaver" ||
   { bad "the screensaver is no longer Landscapes"; permissions_off=1; }
 

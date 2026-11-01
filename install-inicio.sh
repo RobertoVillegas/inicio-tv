@@ -26,6 +26,11 @@ cmd appops set dev.robertovillegas.inicio APP_AUTO_START allow 2>/dev/null
 cmd notification allow_listener dev.robertovillegas.inicio/dev.robertovillegas.inicio.MediaListener
 pm grant dev.robertovillegas.inicio android.permission.WRITE_SECURE_SETTINGS
 cmd appops set dev.robertovillegas.inicio REQUEST_INSTALL_PACKAGES allow
+# Remote app buttons (RemoteButtons.kt), added to any other accessibility services already on.
+s=dev.robertovillegas.inicio/.RemoteButtons
+a=$(settings get secure enabled_accessibility_services)
+case "$a" in *$s*) ;; null|"") settings put secure enabled_accessibility_services $s ;; *) settings put secure enabled_accessibility_services "$a:$s" ;; esac
+settings put secure accessibility_enabled 1
 settings put secure screensaver_enabled 1
 settings put secure screensaver_components dev.robertovillegas.inicio/.LandscapesDream
 settings put secure screensaver_default_component dev.robertovillegas.inicio/.LandscapesDream

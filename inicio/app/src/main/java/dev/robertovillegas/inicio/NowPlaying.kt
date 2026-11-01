@@ -1,7 +1,10 @@
 package dev.robertovillegas.inicio
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.media.MediaMetadata
 import android.media.session.MediaController
@@ -16,10 +19,23 @@ import android.util.Log
  * Reads no notifications: Android only lets an app with an enabled NotificationListenerService see other
  * apps' media sessions. Enabled over ADB with
  * `cmd notification allow_listener dev.robertovillegas.inicio/dev.robertovillegas.inicio.MediaListener`.
- * Android reconnects it after every boot, which is what wakes HomeGuard.
+ * Android reconnects it after every boot, which is what wakes HomeGuard, and it turns the remote's app
+ * buttons back on whenever the screen comes on.
  */
 class MediaListener : NotificationListenerService() {
-    override fun onListenerConnected() = HomeGuard.check(this)
+    private val screenOn = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) = RemoteButtons.resume(ctx)
+    }
+
+    override fun onListenerConnected() {
+        HomeGuard.check(this)
+        RemoteButtons.resume(this)
+        registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
+    }
+
+    override fun onListenerDisconnected() {
+        unregisterReceiver(screenOn)
+    }
 }
 
 data class Song(val title: String, val artist: String, val cover: Bitmap?, val app: String)
