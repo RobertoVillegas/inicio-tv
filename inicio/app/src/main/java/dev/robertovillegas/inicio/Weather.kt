@@ -1,7 +1,9 @@
 package dev.robertovillegas.inicio
 
 import android.content.Context
+import android.location.Location
 import android.util.Log
+import org.json.JSONObject
 import java.time.LocalDateTime
 import kotlin.math.roundToInt
 
@@ -20,7 +22,11 @@ data class Weather(
     fun isNight(now: LocalDateTime = LocalDateTime.now()) = now.isAfter(sunset) || now.isBefore(sunrise)
 }
 
-/** Local weather from Open-Meteo; the TV's location comes from its public IP. Neither needs a key. */
+/**
+ * Local weather from Open-Meteo; the TV's location comes from its public IP. None of it needs a key.
+ * IP databases disagree, sometimes by a whole region (one put this TV 170 km away), so several are asked and
+ * the place most of them agree on wins.
+ */
 object LocalWeather {
     private const val TAG = "Weather"
     private const val ONE_DAY = 24L * 3600 * 1000
@@ -68,24 +74,57 @@ object LocalWeather {
 
     private fun location(ctx: Context): Triple<Double, Double, String> {
         val prefs = ctx.getSharedPreferences("weather", Context.MODE_PRIVATE)
-        if (System.currentTimeMillis() - prefs.getLong("fetched_at", 0) < ONE_DAY) {
+        // Locations from before the vote came from a single database and are looked up again.
+        val fresh = System.currentTimeMillis() - prefs.getLong("fetched_at", 0) < ONE_DAY
+        if (fresh && prefs.getBoolean("voted", false)) {
             return Triple(
                 prefs.getFloat("lat", 0f).toDouble(),
                 prefs.getFloat("lon", 0f).toDouble(),
                 prefs.getString("city", "")!!,
             )
         }
-        val r = Net.json("https://ipapi.co/json/")
-        val lat = r.getDouble("latitude")
-        val lon = r.getDouble("longitude")
-        val city = r.optString("city")
+        val (lat, lon, city) = vote()
         prefs.edit()
             .putFloat("lat", lat.toFloat())
             .putFloat("lon", lon.toFloat())
             .putString("city", city)
             .putLong("fetched_at", System.currentTimeMillis())
+            .putBoolean("voted", true)
             .apply()
         return Triple(lat, lon, city)
+    }
+
+    private class Place(val lat: Double, val lon: Double, val city: String)
+
+    private val SOURCES: List<Pair<String, (JSONObject) -> Place>> = listOf(
+        "https://ipinfo.io/json" to { r ->
+            val (lat, lon) = r.getString("loc").split(",").map { it.toDouble() }
+            Place(lat, lon, r.optString("city"))
+        },
+        "https://ipwho.is/" to { r -> Place(r.getDouble("latitude"), r.getDouble("longitude"), r.optString("city")) },
+        "https://get.geojs.io/v1/ip/geo.json" to { r ->
+            Place(r.getString("latitude").toDouble(), r.getString("longitude").toDouble(), r.optString("city"))
+        },
+        "https://ipapi.co/json/" to { r -> Place(r.getDouble("latitude"), r.getDouble("longitude"), r.optString("city")) },
+    )
+
+    /** The answer with the most others within 50 km of it; on a tie, the earliest source. */
+    private fun vote(): Triple<Double, Double, String> {
+        val places = SOURCES.mapNotNull { (url, parse) ->
+            try {
+                parse(Net.json(url))
+            } catch (e: Exception) {
+                Log.w(TAG, "No location from $url", e)
+                null
+            }
+        }
+        fun near(a: Place, b: Place): Boolean {
+            val meters = FloatArray(1)
+            Location.distanceBetween(a.lat, a.lon, b.lat, b.lon, meters)
+            return meters[0] < 50_000
+        }
+        val best = places.maxByOrNull { p -> places.count { near(it, p) } } ?: error("No location from any source")
+        return Triple(best.lat, best.lon, best.city)
     }
 
     // WMO codes, as Open-Meteo reports them. Shown on screen, so in Spanish.
