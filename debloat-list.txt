@@ -23,6 +23,9 @@ com.tcl.messagebox
 com.tcl.ocean.instructions
 com.tcl.repairguide
 com.tcl.waterfall.overseas
+# Tracking: Samba TV (recognizes what's on screen, for ads) and TCL's log and app-usage collector
+tv.samba.ssm.ui
+com.tcl.logkit
 
 # Google Play Movies, discontinued
 com.google.android.videos
