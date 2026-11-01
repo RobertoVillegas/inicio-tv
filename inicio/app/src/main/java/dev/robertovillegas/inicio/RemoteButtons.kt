@@ -12,7 +12,7 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
 /**
- * The remote's app buttons. On Google TV, TCL's system hands them to Google's home screen, which Inicio
+ * The remote's app buttons and its gear button. On Google TV, TCL's system hands them to Google's home screen, which Inicio
  * replaces and set-home.sh disables, so nothing answered them. Seeing keys from any app takes an
  * accessibility service; install-inicio.sh turns it on.
  *
@@ -67,14 +67,19 @@ class RemoteButtons : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        val pkg = APPS[event.keyCode] ?: return false
+        val launch = target(event.keyCode) ?: return false
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) Apps.launch(this, launch)
+        return true
+    }
+
+    private fun target(code: Int): Intent? {
+        // The gear button; Google's home screen answered it with its own settings panel.
+        if (code == KeyEvent.KEYCODE_NOTIFICATION) return Apps.settings()
+        val pkg = APPS[code] ?: return null
         val launch = packageManager.getLeanbackLaunchIntentForPackage(pkg)
             ?: packageManager.getLaunchIntentForPackage(pkg)
-            ?: return false
-        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-            Apps.launch(this, launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
-        }
-        return true
+            ?: return null
+        return launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {}
