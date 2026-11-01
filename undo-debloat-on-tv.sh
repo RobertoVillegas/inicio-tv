@@ -16,6 +16,7 @@ fi
 rm -f /sdcard/inicio-launchers.txt
 settings put secure screensaver_components com.google.android.apps.tv.dreamx/.service.Backdrop
 settings put secure screensaver_default_component com.google.android.apps.tv.dreamx/.service.Backdrop
+settings put global tcl_diagnostic_status 1
 settings put system screen_off_timeout 600000
 settings put secure sleep_timeout 1139000
 settings put secure attentive_timeout -1

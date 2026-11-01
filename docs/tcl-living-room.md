@@ -62,6 +62,12 @@ The debloat uses `pm disable-user --user 0` and never uninstalls anything. A dis
 - **Unused streaming apps:** Disney+, Max, Paramount+, Tubi, Twitch, PrendeTV, Downloader and an unidentified sideload (`com.flix.tv`).
 - **Google:** the Assistant and voice search (`katniss`), YouTube Music, Play Games, Play Movies, Feedback, and the ambient screensaver (`dreamx`).
 - **TCL:** ad-supported FAST channels (`channelplus`), store demo mode (`esticker`, `exhibit`), Alexa, MagiConnect, the promo inbox (`messagebox`), manuals, and the content feed (`waterfall.overseas`).
+- **Tracking:** Samba TV (`tv.samba.ssm.ui`, recognizes what's on screen to target ads) and TCL's Logkit (`com.tcl.logkit`, collects logs and app usage, with internet access). The script also turns off TCL's diagnostic data (`settings put global tcl_diagnostic_status 0`).
+
+What a privacy check on 2026-10-31 found (`dumpsys appops`, `/proc/net/tcp`):
+
+- The TV has a built-in microphone besides the remote's. Only the Assistant (`katniss`, including "Hey Google" hotword listening) and YouTube's voice search ever used either, and nothing has since `katniss` was disabled.
+- `com.tcl.ttvs` logs every remote key press for TCL's analytics (`TTVS_LOG: KeyDownBehaviorReceiver-BI`), and a system app keeps a connection to a Microsoft Azure server (`20.14.97.224:6179`), most likely TCL's cloud. Both run as the system user, alongside TCL's TV app and T-Cast, so they stay: disabling a system-user package risks breaking the TV.
 
 Kept on purpose: TCL's TV app (it owns the HDMI inputs), Chromecast, AirPlay, Play Store and Settings.
 
